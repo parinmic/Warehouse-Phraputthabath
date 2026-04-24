@@ -1,0 +1,1210 @@
+import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOW:
+// 1. LG Upload คิวรถ
+// 2. คนขับสแกนเข้า  → status: "arrived"
+// 3. Picking พิมพ์เบิกพัสดุ → status: "picking"
+// 4. QC ตรวจอุณหภูมิก่อนเข้าแต่ละลาน (ทีละลาน ไม่ต้องครบ 3 พร้อมกัน)
+// 5. ลานโหลด: QC ผ่านลานไหน → โหลดลานนั้นได้เลย (truck.qcLanes / truck.loadLanes)
+// 6. Picking พิมพ์สรุปค่าย (โหลดแล้วอย่างน้อย 1 ลาน) → status: "summary_printed"
+// 7. วางแผน ออก Invoice → status: "invoiced"
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STORAGE_KEY_QUEUE  = "wh_queue";
+const STORAGE_KEY_TRUCKS = "wh_trucks";
+
+const loadStorage = (key, fallback) => {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+};
+const saveStorage = (key, val) => {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+};
+
+const INITIAL_QUEUE = loadStorage(STORAGE_KEY_QUEUE, []);
+
+const LOADING_LANES = [
+  { id: "lane_parts", label: "ลานโหลดชิ้นส่วน",       shortLabel: "ลานโหลดชิ้นส่วน", tinyLabel: "ชิ้นส่วน",     emoji: "🥩", color: "#f97316", bg: "#fff7ed", border: "#fed7aa" },
+  { id: "lane_head",  label: "ลานโหลดหัว/เครื่องใน",  shortLabel: "ลานโหลดหัว/เครื่องใน", tinyLabel: "หัว/เครื่องใน", emoji: "🐷", color: "#8b5cf6", bg: "#faf5ff", border: "#ddd6fe" },
+  { id: "lane_pork",  label: "ลานโหลดหมูซีก",          shortLabel: "ลานโหลดหมูซีก",        tinyLabel: "หมูซีก",        emoji: "🐖", color: "#e11d48", bg: "#fff1f2", border: "#fecdd3" },
+];
+
+const STATUS_META = {
+  arrived:         { label: "เข้าโรงงานแล้ว",   color: "#3b82f6", bg: "#dbeafe", step: 1 },
+  picking:         { label: "กำลังโหลด",          color: "#f97316", bg: "#ffedd5", step: 2 },
+  summary_printed: { label: "โหลดเสร็จ/สรุปแล้ว", color: "#10b981", bg: "#d1fae5", step: 3 },
+  invoiced:        { label: "ออก Invoice แล้ว",   color: "#6b7280", bg: "#f3f4f6", step: 4 },
+};
+
+const FLOW_STEPS = [
+  { key: "arrived",         label: "เข้าโรงงาน",  emoji: "🚛" },
+  { key: "picking",         label: "โหลดสินค้า",  emoji: "📋" },
+  { key: "summary_printed", label: "ใบสรุป",       emoji: "🖨️" },
+  { key: "invoiced",        label: "Invoice",      emoji: "📄" },
+];
+
+const TODAY = new Date().toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" });
+const TIME_NOW = () => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+const getStep = (status) => STATUS_META[status]?.step ?? 0;
+
+// ─── ICONS ───────────────────────────────────────────────────────────────────
+const Icon = ({ name, size = 20 }) => {
+  const icons = {
+    truck:     <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
+    scan:      <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10"/></svg>,
+    upload:    <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>,
+    clipboard: <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>,
+    camera:    <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+    check:     <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>,
+    chart:     <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>,
+    list:      <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>,
+    print:     <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>,
+    invoice:   <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>,
+    temp:      <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg>,
+    loader:    <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>,
+    x:         <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>,
+    bell:      <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>,
+    plan:      <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>,
+    lock:      <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
+    pig_head:  <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="13.5" r="6.5"/><path d="M7 8.5 L5 4 L10 7.5"/><path d="M17 8.5 L19 4 L14 7.5"/><ellipse cx="12" cy="17" rx="2.5" ry="1.5"/><circle cx="11" cy="17" r="0.6" fill="currentColor" stroke="none"/><circle cx="13" cy="17" r="0.6" fill="currentColor" stroke="none"/><circle cx="9.5" cy="12" r="0.9" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="0.9" fill="currentColor" stroke="none"/></svg>,
+    pig_cuts:  <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16 Q12 13 21 16 L21 18.5 Q12 21.5 3 18.5 Z"/><path d="M4 11 Q12 8 20 11 L20 13.5 Q12 16.5 4 13.5 Z"/><path d="M5 6 Q12 3 19 6 L19 8.5 Q12 11.5 5 8.5 Z"/></svg>,
+    pig_side:  <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M10 2 L10 4.5 C7 5.5 6 9 6 13 C6 17 7.5 20.5 10 22 L14 22 C16.5 20.5 18 17 18 13 C18 9 17 5.5 14 4.5 L14 2"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="8.5" y1="14.5" x2="15.5" y2="14.5"/><line x1="9" y1="18" x2="15" y2="18"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+// ─── STATUS BADGE ─────────────────────────────────────────────────────────────
+const StatusBadge = ({ status }) => {
+  const s = STATUS_META[status]; if (!s) return null;
+  return <span style={{ background: s.bg, color: s.color, padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{s.label}</span>;
+};
+
+// ─── FLOW PROGRESS ────────────────────────────────────────────────────────────
+const FlowProgress = ({ status }) => {
+  const cur = getStep(status);
+  return (
+    <div style={{ display: "flex", alignItems: "center", overflowX: "auto", padding: "2px 0" }}>
+      {FLOW_STEPS.map((s, i) => {
+        const n = i + 1; const done = n <= cur;
+        return (
+          <div key={s.key} style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+            <div style={{ textAlign: "center", width: 42 }}>
+              <div style={{ width: 26, height: 26, borderRadius: "50%", margin: "0 auto 2px", background: done ? "#111" : "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {done ? <Icon name="check" size={13} /> : <span style={{ color: "#9ca3af", fontSize: 12 }}>{s.emoji}</span>}
+              </div>
+              <div style={{ fontSize: 9, fontWeight: done ? 700 : 400, color: done ? "#111" : "#9ca3af", lineHeight: 1.2 }}>{s.label}</div>
+            </div>
+            {i < FLOW_STEPS.length - 1 && <div style={{ width: 12, height: 2, background: n < cur ? "#111" : "#e5e7eb", flexShrink: 0, marginBottom: 12 }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ─── BLOCKED BANNER ───────────────────────────────────────────────────────────
+const BlockedBanner = ({ msg }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "#fef9c3", border: "1.5px solid #fde047", borderRadius: 10, color: "#713f12", fontWeight: 600, fontSize: 13, marginBottom: 14 }}>
+    <Icon name="lock" size={15} /> {msg}
+  </div>
+);
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+const Modal = ({ title, onClose, children }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid #e5e7eb" }}>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h3>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}><Icon name="x" size={22} /></button>
+      </div>
+      <div style={{ padding: 24 }}>{children}</div>
+    </div>
+  </div>
+);
+
+// ─── PRINT MODAL ──────────────────────────────────────────────────────────────
+const PrintModal = ({ truck, type, onClose }) => {
+  const titles = { pickup: "เบิกพัสดุสินค้า", summary: "ใบสรุปค่าย", invoice: "ใบ Invoice" };
+  const title = titles[type];
+  return (
+    <Modal title={`🖨️ ${title}`} onClose={onClose}>
+      <div style={{ border: "2px solid #111", borderRadius: 8, padding: 20, fontFamily: "monospace", fontSize: 13, lineHeight: 1.9 }}>
+        <div style={{ textAlign: "center", fontWeight: 900, fontSize: 17, borderBottom: "2px solid #111", paddingBottom: 8, marginBottom: 14 }}>
+          🏭 โรงงานอาหารสด<br/><span style={{ fontSize: 14 }}>{title}</span>
+        </div>
+        <div>วันที่: {TODAY}</div>
+        <div>เลขที่: {type.toUpperCase()}-{truck.id}-{Date.now().toString().slice(-4)}</div>
+        <div>ทะเบียนรถ: <b>{truck.plate}</b></div>
+        <div>คนขับ: {truck.driver}</div>
+        <div style={{ margin: "10px 0", borderTop: "1px dashed #aaa", paddingTop: 10 }}>
+          <div>สินค้า: {truck.product}</div>
+          <div>จำนวน: {truck.qty} {truck.unit}</div>
+          <div>ปลายทาง: {truck.destination}</div>
+        </div>
+        {type === "summary" && truck.qcLanes && (
+          <div style={{ borderTop: "1px dashed #aaa", paddingTop: 10 }}>
+            <b>อุณหภูมิ QC:</b>
+            {LOADING_LANES.map(l => <div key={l.id}> {l.emoji} {l.shortLabel}: {truck.qcLanes[l.id]?.temp || "–"}°C</div>)}
+          </div>
+        )}
+        {type === "invoice" && (
+          <div style={{ borderTop: "1px dashed #aaa", paddingTop: 10 }}>
+            <div>ราคาต่อหน่วย: 120.00 บาท</div>
+            <div>รวม: {(truck.qty * 120).toLocaleString()} บาท</div>
+            <div>VAT 7%: {Math.round(truck.qty * 120 * 0.07).toLocaleString()} บาท</div>
+            <div style={{ fontWeight: 900, fontSize: 15 }}>รวมทั้งสิ้น: {Math.round(truck.qty * 120 * 1.07).toLocaleString()} บาท</div>
+          </div>
+        )}
+        <div style={{ textAlign: "center", marginTop: 14, borderTop: "1px dashed #aaa", paddingTop: 10, fontSize: 11, color: "#666" }}>
+          ผู้รับสินค้า: _______________ / ผู้ส่งสินค้า: _______________
+        </div>
+      </div>
+      <button onClick={() => { window.print(); onClose(); }} style={{ marginTop: 14, width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 8, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+        🖨️ พิมพ์เอกสาร
+      </button>
+    </Modal>
+  );
+};
+
+// ─── PHOTO UPLOADER ───────────────────────────────────────────────────────────
+const PhotoUploader = ({ label, value, onChange }) => (
+  <div style={{ marginBottom: 14 }}>
+    {label && <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>{label}</label>}
+    <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, border: `2px dashed ${value ? "#6ee7b7" : "#d1d5db"}`, borderRadius: 10, padding: 18, cursor: "pointer", background: value ? "#f0fdf4" : "#fafafa" }}>
+      <input type="file" accept="image/*" capture="environment" onChange={onChange} style={{ display: "none" }} />
+      {value ? <img src={value} alt="" style={{ width: "100%", borderRadius: 8, maxHeight: 160, objectFit: "cover" }} />
+        : <><Icon name="camera" size={28} /><span style={{ color: "#9ca3af", fontSize: 13 }}>แตะเพื่อถ่าย / อัปโหลดรูป</span></>}
+    </label>
+  </div>
+);
+
+// ─── TRUCK CARD ───────────────────────────────────────────────────────────────
+const TruckCard = ({ t, children, highlight }) => (
+  <div style={{ background: "#fff", borderRadius: 14, padding: 18, boxShadow: "0 2px 10px rgba(0,0,0,0.07)", marginBottom: 14, border: highlight ? "2px solid #111" : "1.5px solid #f0f0f0" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+      <div>
+        <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: 1 }}>{t.plate}</div>
+        <div style={{ color: "#6b7280", fontSize: 12 }}>{t.driver} · เข้า {t.arrivedAt}</div>
+      </div>
+      <StatusBadge status={t.status} />
+    </div>
+    <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 10, display: "flex", gap: 14, flexWrap: "wrap" }}>
+      <span><b>สินค้า:</b> {t.product}</span>
+      <span><b>จำนวน:</b> {t.qty} {t.unit}</span>
+      <span><b>ปลายทาง:</b> {t.destination}</span>
+    </div>
+    <FlowProgress status={t.status} />
+    {children && <div style={{ marginTop: 12 }}>{children}</div>}
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIEWS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── TIME BAR ──────────────────────────────────────────────────────────────────
+// ── TIME BAR ──────────────────────────────────────────────────────────────────
+const TimeBar = ({ exitTime, done, invoicedAt }) => {
+  if (!exitTime) return <span style={{ color: "#d1d5db", fontSize: 11 }}>—</span>;
+  const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const now = new Date(); const nowMins = now.getHours() * 60 + now.getMinutes();
+  let exitMins = toMins(exitTime);
+  if (exitMins <= 9 * 60) exitMins += 24 * 60; // 00:00–09:00 คือวันถัดไป
+  const remaining = exitMins - nowMins;
+  const totalWindow = 240;
+  const color = remaining > 60 ? "#22c55e" : remaining > 20 ? "#f59e0b" : "#ef4444";
+
+  if (done) {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>{exitTime}</div>
+        {invoicedAt && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>ออกจริง {invoicedAt}</div>}
+      </div>
+    );
+  }
+
+  const pct = Math.min(Math.max(remaining / totalWindow, 0), 1);
+  const label = remaining < 0 ? `เกิน ${Math.abs(remaining)} น.` : `เหลือ ${remaining} น.`;
+  return (
+    <div style={{ minWidth: 110 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: remaining <= 0 ? "#ef4444" : "#374151", whiteSpace: "nowrap" }}>{exitTime}</span>
+        <div style={{ flex: 1, background: "#e5e7eb", borderRadius: 4, height: 6, overflow: "hidden", minWidth: 40 }}>
+          <div style={{ background: color, height: "100%", width: `${pct * 100}%`, borderRadius: 4 }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color, marginTop: 2, whiteSpace: "nowrap" }}>{label}</div>
+    </div>
+  );
+};
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+const Dashboard = ({ trucks, queue, onReset }) => {
+  const cnt = (s) => trucks.filter(t => t.status === s).length;
+  const stats = [
+    { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.plate === q.plate)).length, color: "#3b82f6", icon: "list"    },
+    { label: "รถเข้าโรงงานแล้ว", value: trucks.length,                                                    color: "#22c55e", icon: "truck"   },
+    { label: "กำลังโหลด",         value: cnt("arrived") + cnt("picking"),                                  color: "#f97316", icon: "loader"  },
+    { label: "Invoice แล้ว",      value: cnt("invoiced"),                                                  color: "#6b7280", icon: "invoice" },
+  ];
+
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+  const allRows = [
+    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
+  ].sort((a, b) => {
+    const aInv = a.truck?.status === "invoiced";
+    const bInv = b.truck?.status === "invoiced";
+    if (aInv && !bInv) return 1;
+    if (!aInv && bInv) return -1;
+    const adjMins = t => { let m = toMins(t); if (m <= 9 * 60) m += 24 * 60; return m; };
+    const aRem = a.exitTime ? adjMins(a.exitTime) - nowMins : Infinity;
+    const bRem = b.exitTime ? adjMins(b.exitTime) - nowMins : Infinity;
+    return aRem - bRem;
+  });
+
+  const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
+  const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+
+  return (
+    <div>
+      {/* Sticky header */}
+      <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: 12, paddingTop: 2 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 Main Dashboard</h2>
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
+          </div>
+          <button onClick={() => { if (window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) onReset(); }}
+            style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+            🗑️ ล้างวันใหม่
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "start" }}>
+        {/* Left: sticky stat cards */}
+        <div style={{ position: "sticky", top: 120, alignSelf: "start", display: "flex", flexDirection: "column", gap: 10 }}>
+          {stats.map(s => (
+            <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderLeft: `4px solid ${s.color}` }}>
+              <div style={{ color: s.color, marginBottom: 3 }}><Icon name={s.icon} size={16} /></div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: "#111", lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: "#6b7280", marginTop: 3 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Right: truck table */}
+        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
+            🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+          </div>
+          {allRows.length === 0
+            ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีรถเข้าโรงงาน</div>
+            : <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 220px)" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                    <tr style={{ background: "#f9fafb" }}>
+                      {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน","สถานะ","ใบเบิกสินค้า","ใบสรุปจ่าย","ใบ Invoice"].map(h => (
+                        <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allRows.map(({ key, plate, customerGroup, entryTime, exitTime, truck }) => {
+                      const adjE = exitTime ? (m => m <= 9*60 ? m+24*60 : m)(toMins(exitTime)) : null;
+                      const rem = adjE !== null ? adjE - nowMins : Infinity;
+                      const urgent = rem < 20 && truck?.status !== "invoiced";
+                      return (
+                      <tr key={key} className={urgent ? "row-urgent" : ""} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
+                        <td style={{ padding: "10px 12px", color: "#374151", maxWidth: 100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customerGroup}</td>
+                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                          <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
+                          {truck?.arrivedAt
+                            ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
+                            : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}><TimeBar exitTime={exitTime} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} /></td>
+                        <td style={{ padding: "10px 12px" }}>
+                          {!truck
+                            ? <span style={{ fontSize: 11, color: "#9ca3af" }}>รอเช็คอิน</span>
+                            : (() => {
+                                const anyQC = LOADING_LANES.some(l => truck.qcLanes?.[l.id]?.done);
+                                if (!anyQC) return <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>รอเข้าโหลด</span>;
+                                return (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                    {LOADING_LANES.map(l => {
+                                      const loaded = truck.loadLanes?.[l.id]?.done;
+                                      const qcDone = truck.qcLanes?.[l.id]?.done;
+                                      if (loaded) return (
+                                        <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#10b981", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
+                                          {l.tinyLabel}
+                                          <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
+                                        </div>
+                                      );
+                                      if (qcDone) return <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>;
+                                      return null;
+                                    })}
+                                  </div>
+                                );
+                              })()
+                          }
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
+                        <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          {truck?.status === "invoiced" ? <Tick/> : <Dash/>}
+                        </td>
+                      </tr>
+                    );})}
+                  </tbody>
+                </table>
+              </div>
+          }
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── 1. LG UPLOAD (Excel → parse → queue) ─────────────────────────────────────
+const COL_MAP = {
+  plate:         ["ทะเบียนรถ","ทะเบียน","plate"],
+  customerGroup: ["กลุ่มลูกค้า","customergroup"],
+  entryTime:     ["เวลารถเข้าโรงงาน","เวลาเข้าโรงงาน","เข้าโรงงาน","entrytime"],
+  exitTime:      ["เวลาออกจากโรงงาน","ออกจากโรงงาน","exittime"],
+};
+
+const norm = (s) => String(s).normalize("NFC").toLowerCase().replace(/\s+/g, "").trim();
+
+const matchCol = (header) => {
+  const h = norm(header);
+  for (const [field, aliases] of Object.entries(COL_MAP)) {
+    if (aliases.some(a => h.includes(norm(a)))) return field;
+  }
+  return null;
+};
+
+const toHHMM = (val) => {
+  if (val === "" || val == null) return "";
+  // already looks like time string
+  if (typeof val === "string" && /^\d{1,2}:\d{2}/.test(val.trim())) return val.trim().slice(0,5);
+  // Excel stores time as fraction of a day (0.875 = 21:00)
+  const num = typeof val === "number" ? val : parseFloat(val);
+  if (!isNaN(num)) {
+    const frac = num - Math.floor(num); // strip date part
+    const mins = Math.round(frac * 1440);
+    const h = Math.floor(mins / 60) % 24;
+    const m = mins % 60;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  }
+  return String(val);
+};
+
+const LGUpload = ({ queue, onSetQueue }) => {
+  const [fileName, setFileName] = useState("");
+  const [status,   setStatus]   = useState("idle"); // idle | preview | done | error
+  const [extracted, setExtracted] = useState([]);
+  const [errMsg,   setErrMsg]   = useState("");
+  const [editId,   setEditId]   = useState(null);
+  const [editData, setEditData] = useState({});
+
+  const startEdit = (q) => { setEditId(q.id); setEditData({ plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime }); };
+  const cancelEdit = () => { setEditId(null); setEditData({}); };
+  const saveEdit = () => {
+    onSetQueue(queue.map(q => q.id === editId ? { ...q, ...editData, time: editData.entryTime } : q));
+    setEditId(null); setEditData({});
+  };
+  const deleteRow = (id) => { if (window.confirm("ลบรถคันนี้ออกจากคิว?")) onSetQueue(queue.filter(q => q.id !== id)); };
+
+  const inputStyle = { border: "1px solid #d1d5db", borderRadius: 6, padding: "4px 8px", fontSize: 12, width: "100%", boxSizing: "border-box" };
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    setErrMsg("");
+    setStatus("idle");
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb   = XLSX.read(ev.target.result, { type: "array", cellDates: false });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+
+        if (rows.length < 2) throw new Error("ไม่พบข้อมูลในไฟล์");
+
+        // หา header row จริง (row แรกที่มี column match ได้ >= 2 ช่อง)
+        let headerIdx = 0;
+        for (let i = 0; i < Math.min(rows.length, 15); i++) {
+          if (rows[i].filter(h => matchCol(h) !== null).length >= 2) { headerIdx = i; break; }
+        }
+        // map headers — แต่ละ field ใช้ column แรกที่เจอเท่านั้น
+        const seenFields = new Set();
+        const headers = rows[headerIdx].map(matchCol).map(f => {
+          if (!f || seenFields.has(f)) return null;
+          seenFields.add(f);
+          return f;
+        });
+
+        const timeFields = new Set(["entryTime","exitTime"]);
+        const trucks = [];
+        for (let i = headerIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          const obj = {};
+          headers.forEach((field, ci) => {
+            if (!field) return;
+            obj[field] = timeFields.has(field) ? toHHMM(row[ci]) : String(row[ci] ?? "").trim();
+          });
+          if (obj.plate) trucks.push(obj);
+        }
+
+        if (trucks.length === 0) throw new Error("ไม่พบข้อมูลทะเบียนรถ — ตรวจสอบชื่อ column");
+        setExtracted(trucks);
+        setStatus("preview");
+      } catch (err) {
+        setErrMsg(err.message);
+        setStatus("error");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleConfirm = () => {
+    const newQueue = extracted.map((t, i) => ({
+      id:            `Q${Date.now()}-${i}`,
+      plate:         t.plate        || "",
+      driver:        "",
+      customerGroup: t.customerGroup || "",
+      zone:          t.zone          || "",
+      product:       t.customerGroup || "",
+      destination:   t.zone          || "",
+      qty:           0,
+      unit:          "กก.",
+      time:          t.entryTime    || "",
+      entryTime:     t.entryTime    || "",
+      loadTime:      t.loadTime     || "",
+      exitTime:      t.exitTime     || "",
+    }));
+    onSetQueue(newQueue);
+    setStatus("done");
+    setExtracted([]);
+    setFileName("");
+  };
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>🤝 LG → Upload ตารางคิวรถ</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ขั้นตอนที่ 1 · อัปโหลดไฟล์ Excel (.xlsx / .csv) → ระบบดึงข้อมูลให้อัตโนมัติ</p>
+
+      {/* Upload zone */}
+      <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: fileName ? "#f0fdf4" : "#fafafa", border: `2px dashed ${fileName ? "#6ee7b7" : "#d1d5db"}`, borderRadius: 14, padding: 30, textAlign: "center", cursor: "pointer", marginBottom: 14 }}>
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} style={{ display: "none" }} />
+        <Icon name="upload" size={36} />
+        {fileName
+          ? <><div style={{ fontWeight: 800, color: "#065f46", fontSize: 14 }}>📄 {fileName}</div><div style={{ fontSize: 12, color: "#6b7280" }}>แตะเพื่อเปลี่ยนไฟล์</div></>
+          : <><div style={{ fontWeight: 700, color: "#374151" }}>แตะเพื่ออัปโหลดไฟล์ Excel</div><div style={{ fontSize: 12, color: "#9ca3af" }}>รองรับ .xlsx, .xls, .csv</div></>
+        }
+      </label>
+
+      {/* Error */}
+      {status === "error" && (
+        <div style={{ padding: "12px 16px", background: "#fee2e2", borderRadius: 10, color: "#991b1b", fontWeight: 600, fontSize: 13, marginBottom: 14 }}>
+          ❌ {errMsg}
+          <div style={{ marginTop: 8, fontWeight: 400, fontSize: 12 }}>
+            Column ที่รองรับ: <b>ทะเบียนรถ · กลุ่มลูกค้า · Zone · เข้าโรงงาน · เข้าโหลด · ออก</b>
+          </div>
+        </div>
+      )}
+
+      {/* Preview */}
+      {status === "preview" && extracted.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", marginBottom: 14, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>✅ อ่านข้อมูลได้ {extracted.length} คัน</div>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>ตรวจสอบแล้วกด "ยืนยัน"</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#f9fafb" }}>
+                  {["ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน"].map(h => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {extracted.map((t, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "8px 12px", fontWeight: 800 }}>{t.plate}</td>
+                    <td style={{ padding: "8px 12px" }}>{t.customerGroup}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>{t.entryTime}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#6b7280" }}>{t.exitTime}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: 16 }}>
+            <button onClick={handleConfirm}
+              style={{ width: "100%", background: "#10b981", color: "#fff", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+              ✅ ยืนยัน — ตั้งคิวรถ {extracted.length} คัน
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status === "done" && (
+        <div style={{ padding: "13px 16px", background: "#d1fae5", borderRadius: 12, color: "#065f46", fontWeight: 700, marginBottom: 14 }}>
+          ✅ ตั้งคิวรถเรียบร้อย {queue.length} คัน — พร้อมให้คนขับ Scan เข้า
+        </div>
+      )}
+
+      {/* Current queue list */}
+      {queue.length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
+            คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{queue.length}</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#f9fafb" }}>
+                  {["ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน",""].map(h => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {queue.map(q => {
+                  const isEditing = editId === q.id;
+                  return (
+                    <tr key={q.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : undefined }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 800 }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.plate} onChange={e => setEditData(d => ({ ...d, plate: e.target.value }))} />
+                          : q.plate}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.customerGroup} onChange={e => setEditData(d => ({ ...d, customerGroup: e.target.value }))} />
+                          : q.customerGroup}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.entryTime} placeholder="HH:MM" onChange={e => setEditData(d => ({ ...d, entryTime: e.target.value }))} />
+                          : q.entryTime}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 700, color: "#6b7280" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.exitTime} placeholder="HH:MM" onChange={e => setEditData(d => ({ ...d, exitTime: e.target.value }))} />
+                          : q.exitTime}
+                      </td>
+                      <td style={{ padding: "8px 8px", whiteSpace: "nowrap" }}>
+                        {isEditing ? (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={saveEdit} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
+                            <button onClick={cancelEdit} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={() => startEdit(q)} style={{ background: "#eff6ff", color: "#1d4ed8", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>แก้ไข</button>
+                            <button onClick={() => deleteRow(q.id)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ลบ</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── 2. DRIVER SCAN ────────────────────────────────────────────────────────────
+const DriverScan = ({ queue, trucks, onScan }) => {
+  const [plate, setPlate] = useState("");
+  const [msg, setMsg] = useState(null);
+
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const matchPlate = (a, b) => plateNum(a) === plateNum(b) && plateNum(a) !== "";
+
+  const handleScan = () => {
+    const p = plate.trim();
+    if (!p) return;
+    if (trucks.find(t => matchPlate(t.plate, p))) {
+      setMsg({ t: "warn", text: "⚠️ รถคันนี้เช็คอินแล้ว" }); return;
+    }
+    const inQueue = queue.find(q => matchPlate(q.plate, p));
+    const entry = inQueue
+      ? { ...inQueue }
+      : { id: `WALK-${Date.now()}`, plate: p, driver: "", customerGroup: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", time: TIME_NOW(), entryTime: TIME_NOW(), loadTime: "", exitTime: "" };
+    onScan({ ...entry, status: "arrived", arrivedAt: TIME_NOW(), pickupPrinted: false, summaryPrinted: false });
+    setMsg({ t: inQueue ? "ok" : "walk", text: inQueue ? `✅ เช็คอินสำเร็จ! ${inQueue.plate}` : `✅ เช็คอินสำเร็จ! ${p} (ยังไม่มีในคิว)` });
+    setPlate("");
+  };
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>🚛 คนขับ → เช็คอินเข้าโรงงาน</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ขั้นตอนที่ 2 · กรอกเลขทะเบียน — เช็คอินได้เลยแม้ยังไม่มีคิว</p>
+      <div style={{ background: "#fff", borderRadius: 14, padding: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", marginBottom: 16 }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ width: 80, height: 80, background: "#111", borderRadius: 20, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+            <Icon name="check" size={40} />
+          </div>
+          <p style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>เช็คอินเข้าโรงงาน</p>
+        </div>
+        <input value={plate} onChange={e => setPlate(e.target.value)} onKeyDown={e => e.key === "Enter" && handleScan()}
+          placeholder="กรอกเลขทะเบียนของท่าน เช่น 1234"
+          style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "14px 16px", fontSize: 18, fontWeight: 800, textAlign: "center", outline: "none", boxSizing: "border-box" }} />
+        <button onClick={handleScan} style={{ marginTop: 10, width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
+          เช็คอินเข้าโรงงาน
+        </button>
+        {msg && (
+          <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 10, fontWeight: 600, fontSize: 14,
+            background: msg.t === "ok" ? "#d1fae5" : msg.t === "walk" ? "#eff6ff" : msg.t === "warn" ? "#fef3c7" : "#fee2e2",
+            color:      msg.t === "ok" ? "#065f46" : msg.t === "walk" ? "#1d4ed8" : msg.t === "warn" ? "#92400e" : "#991b1b" }}>
+            {msg.text}
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+};
+
+// ── 3+6. PICKING ──────────────────────────────────────────────────────────────
+const Picking = ({ trucks, queue, onUpdate }) => {
+
+  // รวม queue + walk-in (รถที่เข้าแล้วแต่ยังไม่มีในคิว)
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const allRows = [
+    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: "", truck: t })),
+  ].sort((a, b) => {
+    const rank = t => {
+      if (!t) return 1;                          // รอเช็คอิน
+      if (t.summaryPrinted) return 3;            // เสร็จแล้ว → ล่าง
+      const can3 = t.status === "arrived";
+      const can6 = t.status === "picking" &&
+        LOADING_LANES.some(l => t.loadLanes?.[l.id]?.done) &&
+        !LOADING_LANES.some(l => t.qcLanes?.[l.id]?.done && !t.loadLanes?.[l.id]?.done);
+      if (can3 || can6) return 0;                // กดได้เลย → บน
+      return 2;                                  // รอขั้นตอนอื่น
+    };
+    return rank(a.truck) - rank(b.truck);
+  });
+
+  const canStep3 = t => t?.status === "arrived";
+  const doneStep3 = t => t && ["picking","summary_printed","invoiced"].includes(t.status);
+  const canStep6 = t =>
+    t?.status === "picking" &&
+    LOADING_LANES.some(l => t.loadLanes?.[l.id]?.done) &&
+    !LOADING_LANES.some(l => t.qcLanes?.[l.id]?.done && !t.loadLanes?.[l.id]?.done);
+  const doneStep6 = t => t && ["summary_printed","invoiced"].includes(t.status);
+
+  const Step3Cell = ({ truck }) => {
+    if (!truck) return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+    if (doneStep3(truck)) return <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
+    if (canStep3(truck)) return (
+      <button onClick={() => onUpdate(truck.id, { pickupPrinted: true, status: "picking" })}
+        style={{ background: "#c2410c", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
+        🖨️ เบิก
+      </button>
+    );
+    return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+  };
+
+  const Step6Cell = ({ truck }) => {
+    if (!truck) return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+    if (doneStep6(truck)) return <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
+    if (canStep6(truck)) return (
+      <button onClick={() => onUpdate(truck.id, { summaryPrinted: true, status: "summary_printed" })}
+        style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
+        🖨️ สรุป
+      </button>
+    );
+    return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+  };
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>📦 ห้อง Picking</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ขั้นตอนที่ 3 (ใบเบิกสินค้า) + ขั้นตอนที่ 6 (ใบสรุปจ่าย)</p>
+
+      <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.07)" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
+          📋 คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+        </div>
+        {allRows.length === 0
+          ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีคิวรถ</div>
+          : (
+          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 190px)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <tr style={{ background: "#f9fafb" }}>
+                  {["ทะเบียน","กลุ่มลูกค้า","สถานะ / เวลาเข้า","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
+                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allRows.map(({ key, plate, customerGroup, truck }) => (
+                  <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
+                    <td style={{ padding: "10px 12px", color: "#374151" }}>{customerGroup}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      {!truck
+                        ? <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>รอเช็คอิน</span>
+                        : (() => {
+                            const anyQC = LOADING_LANES.some(l => truck.qcLanes?.[l.id]?.done);
+                            return (
+                              <div>
+                                {!anyQC
+                                  ? <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>รอเข้าโหลด</span>
+                                  : <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+                                      {LOADING_LANES.map(l => {
+                                        const loaded = truck.loadLanes?.[l.id]?.done;
+                                        const qcDone = truck.qcLanes?.[l.id]?.done;
+                                        if (loaded) return (
+                                          <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#10b981", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
+                                            {l.tinyLabel}
+                                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
+                                          </div>
+                                        );
+                                        if (qcDone) return (
+                                          <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>
+                                        );
+                                        return null;
+                                      })}
+                                    </div>
+                                }
+                                {truck.arrivedAt && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>เข้า {truck.arrivedAt}</div>}
+                              </div>
+                            );
+                          })()
+                      }
+                    </td>
+                    <td style={{ padding: "10px 12px" }}><Step3Cell truck={truck} /></td>
+                    <td style={{ padding: "10px 12px" }}><Step6Cell truck={truck} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+};
+
+// ── 4. QC (per-lane) ──────────────────────────────────────────────────────────
+const QC = ({ trucks, onUpdate }) => {
+  const [selId, setSelId] = useState("");
+  const [lane,  setLane]  = useState("lane_parts");
+  const [temp,  setTemp]  = useState("");
+  const [photo, setPhoto] = useState(null);
+  const [flashLane, setFlashLane] = useState(null);
+
+  // รับทุกรถที่สถานะ "picking" (พิมพ์เบิกแล้ว)
+  const eligible = trucks.filter(t => t.status === "picking");
+  const sel      = trucks.find(t => t.id === selId) || null;
+  const actLane  = LOADING_LANES.find(l => l.id === lane);
+  const thisLaneQCd = sel?.qcLanes?.[lane]?.done;
+
+  const handlePhoto = e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader(); r.onload = ev => setPhoto(ev.target.result); r.readAsDataURL(f);
+  };
+
+  const handleSubmit = () => {
+    if (!sel || !temp) return;
+    const qcLanes = { ...(sel.qcLanes || {}), [lane]: { done: true, temp, photo } };
+    onUpdate(sel.id, { qcLanes });
+    setFlashLane(lane); setTemp(""); setPhoto(null);
+    setTimeout(() => setFlashLane(null), 2500);
+  };
+
+  const hasAnyQC = t => t.qcLanes && Object.values(t.qcLanes).some(l => l.done);
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>🌡️ QC → ตรวจอุณหภูมิ</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>
+        ขั้นตอนที่ 4 · QC ตรวจอุณหภูมิรถเข้าลานโหลด ก่อนโหลดสินค้า
+      </p>
+
+      {flashLane && (
+        <div style={{ padding: "13px 16px", background: "#d1fae5", borderRadius: 12, color: "#065f46", fontWeight: 700, marginBottom: 14, display: "flex", gap: 8, alignItems: "center" }}>
+          <Icon name="check" size={18} /> QC ผ่าน → พร้อมเข้า {LOADING_LANES.find(l => l.id === flashLane)?.label}
+        </div>
+      )}
+      {eligible.length === 0 && <BlockedBanner msg="รอห้อง Picking พิมพ์เบิกก่อน → รถที่พร้อมจะขึ้นมาที่นี่" />}
+
+      {/* เลือกลานโหลด (dropdown, อยู่บนก่อน) */}
+      <div style={{ background: "#fff", borderRadius: 14, padding: 18, boxShadow: "0 2px 10px rgba(0,0,0,0.07)", marginBottom: 14 }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 8 }}>เลือกลานโหลด</label>
+        <select value={lane} onChange={e => { setLane(e.target.value); setTemp(""); setPhoto(null); }}
+          style={{ width: "100%", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "11px 12px", fontSize: 15, outline: "none", boxSizing: "border-box" }}>
+          {LOADING_LANES.map(l => <option key={l.id} value={l.id}>{l.shortLabel}</option>)}
+        </select>
+      </div>
+
+      {/* เลือกรถ */}
+      <div style={{ background: "#fff", borderRadius: 14, padding: 18, boxShadow: "0 2px 10px rgba(0,0,0,0.07)", marginBottom: 14 }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 8 }}>เลือกทะเบียนรถ</label>
+        <select value={selId} onChange={e => { setSelId(e.target.value); setTemp(""); setPhoto(null); }}
+          style={{ width: "100%", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "11px 12px", fontSize: 15, outline: "none", boxSizing: "border-box" }}>
+          <option value="">-- เลือกทะเบียนรถที่รอ QC --</option>
+          {eligible.map(t => <option key={t.id} value={t.id}>{t.plate} · {t.driver} · {t.product}</option>)}
+        </select>
+        {sel && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8 }}>
+              <b>{sel.product}</b> · {sel.qty} {sel.unit} → {sel.destination}
+            </div>
+            {/* สรุป QC รายลาน */}
+            <div style={{ display: "flex", gap: 6 }}>
+              {LOADING_LANES.map(l => {
+                const qc = sel.qcLanes?.[l.id];
+                return (
+                  <div key={l.id} style={{ flex: 1, background: qc?.done ? l.bg : "#f3f4f6", border: `1px solid ${qc?.done ? l.border : "#e5e7eb"}`, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: qc?.done ? l.color : "#9ca3af", lineHeight: 1.4 }}>{l.shortLabel}</div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: qc?.done ? l.color : "#9ca3af" }}>
+                      {qc?.done ? `${qc.temp}°C ✓` : "รอ QC"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ฟอร์มลาน */}
+      <div style={{ background: actLane.bg, border: `2px solid ${actLane.border}`, borderRadius: 14, padding: 18, marginBottom: 12 }}>
+        {thisLaneQCd && (
+          <div style={{ padding: "9px 12px", background: "#d1fae5", borderRadius: 8, color: "#065f46", fontWeight: 700, marginBottom: 12, fontSize: 13 }}>
+            ✅ {actLane.label} QC แล้ว: {sel.qcLanes[lane].temp}°C — สามารถวัดซ้ำได้
+          </div>
+        )}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: actLane.color }}>{actLane.label}</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>วัดอุณหภูมิก่อนรถเข้าลานนี้</div>
+        </div>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>อุณหภูมิ (°C)</label>
+        <input value={temp} onChange={e => setTemp(e.target.value)} type="number" placeholder="-4"
+          style={{ width: "100%", border: `2px solid ${actLane.border}`, borderRadius: 8, padding: "12px 14px", fontSize: 26, fontWeight: 900, outline: "none", boxSizing: "border-box", color: actLane.color, background: "#fff", textAlign: "center", marginBottom: 12 }} />
+        <PhotoUploader label="📷 ถ่ายรูปอุณหภูมิ" value={photo} onChange={handlePhoto} />
+      </div>
+
+      <button onClick={handleSubmit} disabled={!sel || !temp}
+        style={{ width: "100%", background: sel && temp ? actLane.color : "#e5e7eb", color: sel && temp ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "14px 0", fontWeight: 700, fontSize: 15, cursor: sel && temp ? "pointer" : "default", marginBottom: 20 }}>
+        {!sel ? "เลือกทะเบียนรถก่อน" : !temp ? "กรอกอุณหภูมิก่อน" : `✅ บันทึก QC → ${actLane.label}`}
+      </button>
+
+    </div>
+  );
+};
+
+// ── 5. LOADING YARD (per-lane gate) ───────────────────────────────────────────
+const LoadingYard = ({ trucks, onUpdate, laneId }) => {
+  const [activeLane, setActiveLane] = useState(laneId ?? "lane_parts");
+  const [forms, setForms] = useState({
+    lane_parts: { selId: "", photo: null, flash: false },
+    lane_head:  { selId: "", photo: null, flash: false },
+    lane_pork:  { selId: "", photo: null, flash: false },
+  });
+  const setF = (lId, upd) => setForms(p => ({ ...p, [lId]: { ...p[lId], ...upd } }));
+  const curLane = LOADING_LANES.find(l => l.id === activeLane);
+  const form    = forms[activeLane];
+
+  // รถที่ QC ลานนี้ผ่านแล้ว และยังไม่ได้โหลดลานนี้
+  const eligibleForLane = (laneId) => trucks.filter(t =>
+    t.status === "picking" &&
+    t.qcLanes?.[laneId]?.done &&
+    !t.loadLanes?.[laneId]?.done
+  );
+  const eligible = eligibleForLane(activeLane);
+  const sel = trucks.find(t => t.id === form.selId) || null;
+
+  const handlePhoto = lId => e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader(); r.onload = ev => setF(lId, { photo: ev.target.result }); r.readAsDataURL(f);
+  };
+
+  const handleLoad = () => {
+    if (!sel) return;
+    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { done: true, photo: form.photo, doneAt: TIME_NOW() } };
+    // รถอยู่ "picking" ต่อ — จะ summary_printed เมื่อ Picking พิมพ์ใบสรุป
+    onUpdate(sel.id, { loadLanes });
+    setF(activeLane, { selId: "", photo: null, flash: true });
+    setTimeout(() => setF(activeLane, { flash: false }), 2500);
+  };
+
+  const doneTrucks = trucks.filter(t => ["summary_printed","invoiced"].includes(t.status));
+
+  const LaneSummary = ({ t }) => (
+    <div style={{ display: "flex", gap: 6, margin: "8px 0" }}>
+      {LOADING_LANES.map(l => {
+        const qc  = t.qcLanes?.[l.id];
+        const ld  = t.loadLanes?.[l.id];
+        const bg  = ld?.done ? l.bg : qc?.done ? "#fef9c3" : "#f9fafb";
+        const bdr = ld?.done ? l.border : qc?.done ? "#fde047" : "#e5e7eb";
+        return (
+          <div key={l.id} style={{ flex: 1, background: bg, border: `1px solid ${bdr}`, borderRadius: 8, padding: "5px 4px", textAlign: "center" }}>
+            <div style={{ fontSize: 13 }}>{l.emoji}</div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: ld?.done ? l.color : qc?.done ? "#713f12" : "#9ca3af", lineHeight: 1.3 }}>
+              {ld?.done ? `✓ ${ld.doneAt}` : qc?.done ? `QC ${qc.temp}°C` : "–"}
+            </div>
+            {ld?.photo && <img src={ld.photo} alt="" style={{ width: "100%", borderRadius: 4, marginTop: 2, height: 28, objectFit: "cover" }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>{curLane.label}</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ขั้นตอนที่ 5 · รถเข้าโหลดสินค้า</p>
+
+      {/* ฟอร์มลาน */}
+      <div style={{ background: curLane.bg, border: `2px solid ${curLane.border}`, borderRadius: 16, padding: 20, marginBottom: 16 }}>
+        {form.flash && (
+          <div style={{ padding: "11px 14px", background: "#d1fae5", borderRadius: 10, color: "#065f46", fontWeight: 700, marginBottom: 12, display: "flex", gap: 8, alignItems: "center" }}>
+            <Icon name="check" size={16} /> บันทึกโหลดเสร็จ → {curLane.label}
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: 32 }}>{curLane.emoji}</span>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 16, color: curLane.color }}>{curLane.label}</div>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>{curLane.label}</div>
+          </div>
+        </div>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 6 }}>เลือกทะเบียนรถ</label>
+        <select value={form.selId} onChange={e => setF(activeLane, { selId: e.target.value })}
+          style={{ width: "100%", border: `1.5px solid ${curLane.border}`, borderRadius: 8, padding: "11px 12px", fontSize: 15, outline: "none", boxSizing: "border-box", marginBottom: 12, background: "#fff" }}>
+          <option value="">-- เลือกทะเบียนรถ --</option>
+          {eligible.map(t => <option key={t.id} value={t.id}>{t.plate} · {t.driver} · {t.product}</option>)}
+        </select>
+        {sel && (
+          <div style={{ background: "#fff", borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 12, border: `1px solid ${curLane.border}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+            <span><b>สินค้า:</b> {sel.product}</span>
+            <span><b>จำนวน:</b> {sel.qty} {sel.unit}</span>
+            <span style={{ gridColumn: "1/-1" }}><b>ปลายทาง:</b> {sel.destination}</span>
+            <span style={{ gridColumn: "1/-1", color: "#8b5cf6" }}>🌡️ QC {curLane.shortLabel}: {sel.qcLanes?.[activeLane]?.temp}°C</span>
+          </div>
+        )}
+        <PhotoUploader label="📷 ถ่ายรูปหลังโหลดเสร็จ" value={form.photo} onChange={handlePhoto(activeLane)} />
+        <button onClick={handleLoad} disabled={!sel}
+          style={{ width: "100%", background: sel ? curLane.color : "#e5e7eb", color: sel ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel ? "pointer" : "default" }}>
+          ✅ บันทึกโหลดเสร็จ → {curLane.label}
+        </button>
+      </div>
+
+    </div>
+  );
+};
+
+// ── 7. PLANNING ───────────────────────────────────────────────────────────────
+const Planning = ({ trucks, queue, onUpdate }) => {
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const allRows = [
+    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", truck: t })),
+  ].sort((a, b) => {
+    const rank = t => {
+      if (!t) return 1;
+      if (t.status === "invoiced") return 3;     // ออกแล้ว → ล่าง
+      if (t.status === "summary_printed") return 0; // ออกได้เลย → บน
+      return 2;
+    };
+    return rank(a.truck) - rank(b.truck);
+  });
+
+  const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
+  const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>📄 ห้องวางแผน</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ขั้นตอนที่ 7 · ออก Invoice</p>
+
+      <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.07)" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
+          📋 คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+        </div>
+        {allRows.length === 0
+          ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีคิวรถ</div>
+          : (
+          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 190px)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <tr style={{ background: "#f9fafb" }}>
+                  {["ทะเบียน","กลุ่มลูกค้า","สถานะ / เวลาเข้า","③ ใบเบิกสินค้า","⑥ ใบสรุปจ่าย","⑦ ใบ Invoice"].map(h => (
+                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allRows.map(({ key, plate, customerGroup, truck }) => (
+                  <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
+                    <td style={{ padding: "10px 12px", color: "#374151" }}>{customerGroup}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      {!truck
+                        ? <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>รอเช็คอิน</span>
+                        : (() => {
+                            const anyQC = LOADING_LANES.some(l => truck.qcLanes?.[l.id]?.done);
+                            return (
+                              <div>
+                                {!anyQC
+                                  ? <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>รอเข้าโหลด</span>
+                                  : <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+                                      {LOADING_LANES.map(l => {
+                                        const loaded = truck.loadLanes?.[l.id]?.done;
+                                        const qcDone = truck.qcLanes?.[l.id]?.done;
+                                        if (loaded) return (
+                                          <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#10b981", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
+                                            {l.tinyLabel}
+                                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
+                                          </div>
+                                        );
+                                        if (qcDone) return (
+                                          <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>
+                                        );
+                                        return null;
+                                      })}
+                                    </div>
+                                }
+                                {truck.arrivedAt && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>เข้า {truck.arrivedAt}</div>}
+                              </div>
+                            );
+                          })()
+                      }
+                    </td>
+                    <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
+                    <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      {!truck || !["summary_printed","invoiced"].includes(truck.status)
+                        ? <Dash/>
+                        : truck.status === "invoiced"
+                        ? <Tick/>
+                        : <button onClick={() => onUpdate(truck.id, { invoiceDone: true, status: "invoiced", invoicedAt: TIME_NOW() })}
+                            style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
+                            ออก Invoice
+                          </button>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [queue,  setQueue]  = useState(INITIAL_QUEUE);
+  const [trucks, setTrucks] = useState(() => loadStorage(STORAGE_KEY_TRUCKS, []));
+  const [tab,    setTab]    = useState("dashboard");
+  const [time,   setTime]   = useState(TIME_NOW());
+
+  useEffect(() => { const id = setInterval(() => setTime(TIME_NOW()), 15000); return () => clearInterval(id); }, []);
+  useEffect(() => { saveStorage(STORAGE_KEY_QUEUE, queue); }, [queue]);
+  useEffect(() => { saveStorage(STORAGE_KEY_TRUCKS, trucks); }, [trucks]);
+
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+
+  const handleScan      = (t) => setTrucks(p => [t, ...p]);
+  const handleUpdate    = (id, upd) => setTrucks(p => p.map(t => t.id === id ? { ...t, ...upd } : t));
+  const handleReset     = () => { setQueue([]); setTrucks([]); };
+  const handleSetQueue  = (newQueue) => {
+    setQueue(newQueue);
+    // merge ข้อมูลคิวกับรถที่เช็คอินไปแล้ว
+    setTrucks(prev => prev.map(truck => {
+      const match = newQueue.find(q => plateNum(q.plate) === plateNum(truck.plate) && plateNum(q.plate) !== "");
+      if (!match) return truck;
+      return { ...truck, plate: match.plate, customerGroup: match.customerGroup, zone: match.zone, product: match.customerGroup, destination: match.zone, entryTime: match.entryTime, exitTime: match.exitTime };
+    }));
+  };
+
+  const badge = {
+    driver:        queue.filter(q => !trucks.find(t => t.plate === q.plate)).length,
+    picking:       trucks.filter(t => t.status === "arrived").length,
+    qc:            trucks.filter(t => t.status === "picking" && LOADING_LANES.some(l => !t.qcLanes?.[l.id]?.done)).length,
+    loading_parts: trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_parts?.done && !t.loadLanes?.lane_parts?.done).length,
+    loading_head:  trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_head?.done  && !t.loadLanes?.lane_head?.done).length,
+    loading_pork:  trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_pork?.done  && !t.loadLanes?.lane_pork?.done).length,
+    planning:      trucks.filter(t => t.status === "summary_printed").length,
+  };
+
+  const tabs = [
+    { id: "dashboard", label: "Dashboard", icon: "chart"     },
+    { id: "lg",        label: "① LG",      icon: "upload"    },
+    { id: "driver",    label: "② คนขับ",   icon: "scan"      },
+    { id: "picking",   label: "③⑥ Picking", icon: "clipboard" },
+    { id: "qc",            label: "④ QC",       icon: "temp"      },
+    { id: "loading_parts", label: "⑤ ชิ้นส่วน", icon: "pig_cuts"  },
+    { id: "loading_head",  label: "⑤ หัว/ใน",  icon: "pig_head"  },
+    { id: "loading_pork",  label: "⑤ หมูซีก",  icon: "pig_side"  },
+    { id: "planning",      label: "⑦ Ordering", icon: "plan"      },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f1f5f9", fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}>
+      <div style={{ background: "#111", color: "#fff", padding: "0 14px", position: "sticky", top: 0, zIndex: 100, height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22 }}>🏭</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>Factory Loading System</div>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>{time} · {TODAY}</div>
+          </div>
+          <select value={tab} onChange={e => setTab(e.target.value)}
+            style={{ marginLeft: 10, background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>
+            {tabs.map(t => {
+              const n = badge[t.id] || 0;
+              return <option key={t.id} value={t.id}>{t.label}{n > 0 ? ` · ${n}` : ""}</option>;
+            })}
+          </select>
+        </div>
+        <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>
+          🚛 {trucks.length} คัน
+        </div>
+      </div>
+      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: "20px 14px 100px" }}>
+        {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} />}
+        {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
+        {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} />}
+        {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+        {tab === "qc"        && <QC trucks={trucks} onUpdate={handleUpdate} />}
+        {tab === "loading_parts" && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_parts" />}
+        {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
+        {tab === "loading_pork"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_pork" />}
+        {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+      </div>
+    </div>
+  );
+}
