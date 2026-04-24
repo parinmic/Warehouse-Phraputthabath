@@ -203,6 +203,42 @@ const TruckCard = ({ t, children, highlight }) => (
 // VIEWS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── TIME BAR ──────────────────────────────────────────────────────────────────
+// ── TIME BAR ──────────────────────────────────────────────────────────────────
+const TimeBar = ({ exitTime, done, invoicedAt }) => {
+  if (!exitTime) return <span style={{ color: "#d1d5db", fontSize: 11 }}>—</span>;
+  const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const now = new Date(); const nowMins = now.getHours() * 60 + now.getMinutes();
+  let exitMins = toMins(exitTime);
+  if (exitMins <= 9 * 60) exitMins += 24 * 60; // 00:00–09:00 คือวันถัดไป
+  const remaining = exitMins - nowMins;
+  const totalWindow = 240;
+  const color = remaining > 60 ? "#22c55e" : remaining > 20 ? "#f59e0b" : "#ef4444";
+
+  if (done) {
+    return (
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>{exitTime}</div>
+        {invoicedAt && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>ออกจริง {invoicedAt}</div>}
+      </div>
+    );
+  }
+
+  const pct = Math.min(Math.max(remaining / totalWindow, 0), 1);
+  const label = remaining < 0 ? `เกิน ${Math.abs(remaining)} น.` : `เหลือ ${remaining} น.`;
+  return (
+    <div style={{ minWidth: 110 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: remaining <= 0 ? "#ef4444" : "#374151", whiteSpace: "nowrap" }}>{exitTime}</span>
+        <div style={{ flex: 1, background: "#e5e7eb", borderRadius: 4, height: 6, overflow: "hidden", minWidth: 40 }}>
+          <div style={{ background: color, height: "100%", width: `${pct * 100}%`, borderRadius: 4 }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color, marginTop: 2, whiteSpace: "nowrap" }}>{label}</div>
+    </div>
+  );
+};
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 const Dashboard = ({ trucks, queue, onReset }) => {
   const cnt = (s) => trucks.filter(t => t.status === s).length;
@@ -212,48 +248,124 @@ const Dashboard = ({ trucks, queue, onReset }) => {
     { label: "กำลังโหลด",         value: cnt("arrived") + cnt("picking"),                                  color: "#f97316", icon: "loader"  },
     { label: "Invoice แล้ว",      value: cnt("invoiced"),                                                  color: "#6b7280", icon: "invoice" },
   ];
+
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+  const allRows = [
+    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
+  ].sort((a, b) => {
+    const aInv = a.truck?.status === "invoiced";
+    const bInv = b.truck?.status === "invoiced";
+    if (aInv && !bInv) return 1;
+    if (!aInv && bInv) return -1;
+    const adjMins = t => { let m = toMins(t); if (m <= 9 * 60) m += 24 * 60; return m; };
+    const aRem = a.exitTime ? adjMins(a.exitTime) - nowMins : Infinity;
+    const bRem = b.exitTime ? adjMins(b.exitTime) - nowMins : Infinity;
+    return aRem - bRem;
+  });
+
+  const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
+  const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 Main Dashboard</h2>
-          <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 13 }}>{TODAY}</p>
+      {/* Sticky header */}
+      <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: 12, paddingTop: 2 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 Main Dashboard</h2>
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
+          </div>
+          <button onClick={() => { if (window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) onReset(); }}
+            style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+            🗑️ ล้างวันใหม่
+          </button>
         </div>
-        <button onClick={() => { if (window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) onReset(); }}
-          style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-          🗑️ ล้างวันใหม่
-        </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 12 }}>
-        {/* Left: stat cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "start" }}>
+        {/* Left: sticky stat cards */}
+        <div style={{ position: "sticky", top: 120, alignSelf: "start", display: "flex", flexDirection: "column", gap: 10 }}>
           {stats.map(s => (
-            <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "14px 12px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderLeft: `4px solid ${s.color}` }}>
-              <div style={{ color: s.color, marginBottom: 4 }}><Icon name={s.icon} size={18} /></div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "#111" }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: "#6b7280" }}>{s.label}</div>
+            <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderLeft: `4px solid ${s.color}` }}>
+              <div style={{ color: s.color, marginBottom: 3 }}><Icon name={s.icon} size={16} /></div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: "#111", lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: "#6b7280", marginTop: 3 }}>{s.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Right: รถในโรงงานวันนี้ */}
+        {/* Right: truck table */}
         <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>🚛 รถในโรงงานวันนี้</div>
-          {trucks.length === 0
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
+            🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+          </div>
+          {allRows.length === 0
             ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีรถเข้าโรงงาน</div>
-            : trucks.map(t => (
-              <div key={t.id} style={{ padding: "12px 20px", borderBottom: "1px solid #f9fafb" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div>
-                    <span style={{ fontWeight: 700 }}>{t.plate}</span>
-                    <span style={{ color: "#6b7280", fontSize: 12, marginLeft: 6 }}>{t.driver}</span>
-                  </div>
-                  <StatusBadge status={t.status} />
-                </div>
-                <FlowProgress status={t.status} />
+            : <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 220px)" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                    <tr style={{ background: "#f9fafb" }}>
+                      {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน","สถานะ","ใบเบิกสินค้า","ใบสรุปจ่าย","ใบ Invoice"].map(h => (
+                        <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allRows.map(({ key, plate, customerGroup, entryTime, exitTime, truck }) => {
+                      const adjE = exitTime ? (m => m <= 9*60 ? m+24*60 : m)(toMins(exitTime)) : null;
+                      const rem = adjE !== null ? adjE - nowMins : Infinity;
+                      const urgent = rem < 20 && truck?.status !== "invoiced";
+                      return (
+                      <tr key={key} className={urgent ? "row-urgent" : ""} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
+                        <td style={{ padding: "10px 12px", color: "#374151", maxWidth: 100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customerGroup}</td>
+                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                          <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
+                          {truck?.arrivedAt
+                            ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
+                            : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}><TimeBar exitTime={exitTime} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} /></td>
+                        <td style={{ padding: "10px 12px" }}>
+                          {!truck
+                            ? <span style={{ fontSize: 11, color: "#9ca3af" }}>รอเช็คอิน</span>
+                            : (() => {
+                                const anyQC = LOADING_LANES.some(l => truck.qcLanes?.[l.id]?.done);
+                                if (!anyQC) return <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>รอเข้าโหลด</span>;
+                                return (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                    {LOADING_LANES.map(l => {
+                                      const loaded = truck.loadLanes?.[l.id]?.done;
+                                      const qcDone = truck.qcLanes?.[l.id]?.done;
+                                      if (loaded) return (
+                                        <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#10b981", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
+                                          {l.tinyLabel}
+                                          <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
+                                        </div>
+                                      );
+                                      if (qcDone) return <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>;
+                                      return null;
+                                    })}
+                                  </div>
+                                );
+                              })()
+                          }
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
+                        <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          {truck?.status === "invoiced" ? <Tick/> : <Dash/>}
+                        </td>
+                      </tr>
+                    );})}
+                  </tbody>
+                </table>
               </div>
-            ))}
+          }
         </div>
       </div>
     </div>
@@ -299,6 +411,18 @@ const LGUpload = ({ queue, onSetQueue }) => {
   const [status,   setStatus]   = useState("idle"); // idle | preview | done | error
   const [extracted, setExtracted] = useState([]);
   const [errMsg,   setErrMsg]   = useState("");
+  const [editId,   setEditId]   = useState(null);
+  const [editData, setEditData] = useState({});
+
+  const startEdit = (q) => { setEditId(q.id); setEditData({ plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime }); };
+  const cancelEdit = () => { setEditId(null); setEditData({}); };
+  const saveEdit = () => {
+    onSetQueue(queue.map(q => q.id === editId ? { ...q, ...editData, time: editData.entryTime } : q));
+    setEditId(null); setEditData({});
+  };
+  const deleteRow = (id) => { if (window.confirm("ลบรถคันนี้ออกจากคิว?")) onSetQueue(queue.filter(q => q.id !== id)); };
+
+  const inputStyle = { border: "1px solid #d1d5db", borderRadius: 6, padding: "4px 8px", fontSize: 12, width: "100%", boxSizing: "border-box" };
 
   const handleFile = (e) => {
     const file = e.target.files[0];
@@ -452,20 +576,52 @@ const LGUpload = ({ queue, onSetQueue }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน"].map(h => (
+                  {["ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน",""].map(h => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {queue.map(q => (
-                  <tr key={q.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "8px 12px", fontWeight: 800 }}>{q.plate}</td>
-                    <td style={{ padding: "8px 12px" }}>{q.customerGroup}</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>{q.entryTime}</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#6b7280" }}>{q.exitTime}</td>
-                  </tr>
-                ))}
+                {queue.map(q => {
+                  const isEditing = editId === q.id;
+                  return (
+                    <tr key={q.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : undefined }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 800 }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.plate} onChange={e => setEditData(d => ({ ...d, plate: e.target.value }))} />
+                          : q.plate}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.customerGroup} onChange={e => setEditData(d => ({ ...d, customerGroup: e.target.value }))} />
+                          : q.customerGroup}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.entryTime} placeholder="HH:MM" onChange={e => setEditData(d => ({ ...d, entryTime: e.target.value }))} />
+                          : q.entryTime}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 700, color: "#6b7280" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.exitTime} placeholder="HH:MM" onChange={e => setEditData(d => ({ ...d, exitTime: e.target.value }))} />
+                          : q.exitTime}
+                      </td>
+                      <td style={{ padding: "8px 8px", whiteSpace: "nowrap" }}>
+                        {isEditing ? (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={saveEdit} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
+                            <button onClick={cancelEdit} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={() => startEdit(q)} style={{ background: "#eff6ff", color: "#1d4ed8", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>แก้ไข</button>
+                            <button onClick={() => deleteRow(q.id)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ลบ</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -537,7 +693,19 @@ const Picking = ({ trucks, queue, onUpdate }) => {
   const allRows = [
     ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
     ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: "", truck: t })),
-  ];
+  ].sort((a, b) => {
+    const rank = t => {
+      if (!t) return 1;                          // รอเช็คอิน
+      if (t.summaryPrinted) return 3;            // เสร็จแล้ว → ล่าง
+      const can3 = t.status === "arrived";
+      const can6 = t.status === "picking" &&
+        LOADING_LANES.some(l => t.loadLanes?.[l.id]?.done) &&
+        !LOADING_LANES.some(l => t.qcLanes?.[l.id]?.done && !t.loadLanes?.[l.id]?.done);
+      if (can3 || can6) return 0;                // กดได้เลย → บน
+      return 2;                                  // รอขั้นตอนอื่น
+    };
+    return rank(a.truck) - rank(b.truck);
+  });
 
   const canStep3 = t => t?.status === "arrived";
   const doneStep3 = t => t && ["picking","summary_printed","invoiced"].includes(t.status);
@@ -583,12 +751,12 @@ const Picking = ({ trucks, queue, onUpdate }) => {
         {allRows.length === 0
           ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีคิวรถ</div>
           : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 190px)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
+              <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
                   {["ทะเบียน","กลุ่มลูกค้า","สถานะ / เวลาเข้า","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
-                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -860,7 +1028,15 @@ const Planning = ({ trucks, queue, onUpdate }) => {
   const allRows = [
     ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
     ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", truck: t })),
-  ];
+  ].sort((a, b) => {
+    const rank = t => {
+      if (!t) return 1;
+      if (t.status === "invoiced") return 3;     // ออกแล้ว → ล่าง
+      if (t.status === "summary_printed") return 0; // ออกได้เลย → บน
+      return 2;
+    };
+    return rank(a.truck) - rank(b.truck);
+  });
 
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
   const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
@@ -877,12 +1053,12 @@ const Planning = ({ trucks, queue, onUpdate }) => {
         {allRows.length === 0
           ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีคิวรถ</div>
           : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 190px)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
+              <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
                   {["ทะเบียน","กลุ่มลูกค้า","สถานะ / เวลาเข้า","③ ใบเบิกสินค้า","⑥ ใบสรุปจ่าย","⑦ ใบ Invoice"].map(h => (
-                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -930,7 +1106,7 @@ const Planning = ({ trucks, queue, onUpdate }) => {
                         ? <Dash/>
                         : truck.status === "invoiced"
                         ? <Tick/>
-                        : <button onClick={() => onUpdate(truck.id, { invoiceDone: true, status: "invoiced" })}
+                        : <button onClick={() => onUpdate(truck.id, { invoiceDone: true, status: "invoiced", invoicedAt: TIME_NOW() })}
                             style={{ background: "#111", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
                             ออก Invoice
                           </button>
@@ -989,44 +1165,36 @@ export default function App() {
     { id: "dashboard", label: "Dashboard", icon: "chart"     },
     { id: "lg",        label: "① LG",      icon: "upload"    },
     { id: "driver",    label: "② คนขับ",   icon: "scan"      },
-    { id: "picking",   label: "③⑥ Pick",   icon: "clipboard" },
+    { id: "picking",   label: "③⑥ Picking", icon: "clipboard" },
     { id: "qc",            label: "④ QC",       icon: "temp"      },
     { id: "loading_parts", label: "⑤ ชิ้นส่วน", icon: "pig_cuts"  },
     { id: "loading_head",  label: "⑤ หัว/ใน",  icon: "pig_head"  },
     { id: "loading_pork",  label: "⑤ หมูซีก",  icon: "pig_side"  },
-    { id: "planning",      label: "⑦ Plan",     icon: "plan"      },
+    { id: "planning",      label: "⑦ Ordering", icon: "plan"      },
   ];
 
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}>
-      <div style={{ background: "#111", color: "#fff", padding: "0 12px", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 50 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 20 }}>🏭</span>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>Factory Loading System</div>
-              <div style={{ fontSize: 10, color: "#9ca3af" }}>{time} · {TODAY}</div>
-            </div>
+      <div style={{ background: "#111", color: "#fff", padding: "0 14px", position: "sticky", top: 0, zIndex: 100, height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22 }}>🏭</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>Factory Loading System</div>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>{time} · {TODAY}</div>
           </div>
-          <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-            🚛 {trucks.length} คัน
-          </div>
+          <select value={tab} onChange={e => setTab(e.target.value)}
+            style={{ marginLeft: 10, background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>
+            {tabs.map(t => {
+              const n = badge[t.id] || 0;
+              return <option key={t.id} value={t.id}>{t.label}{n > 0 ? ` · ${n}` : ""}</option>;
+            })}
+          </select>
         </div>
-        <div style={{ display: "flex", overflowX: "auto", paddingBottom: 6, gap: 1 }}>
-          {tabs.map(t => {
-            const n = badge[t.id] || 0;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "5px 8px", border: "none", borderRadius: 8, cursor: "pointer", background: tab === t.id ? "#fff" : "transparent", color: tab === t.id ? "#111" : "#9ca3af", minWidth: 44, flexShrink: 0 }}>
-                <Icon name={t.icon} size={14} />
-                <span style={{ fontSize: 9, fontWeight: 700, whiteSpace: "nowrap" }}>{t.label}</span>
-                {n > 0 && <span style={{ position: "absolute", top: 2, right: 2, background: "#ef4444", color: "#fff", borderRadius: "50%", width: 15, height: 15, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</span>}
-              </button>
-            );
-          })}
+        <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>
+          🚛 {trucks.length} คัน
         </div>
       </div>
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 14px 100px" }}>
+      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: "20px 14px 100px" }}>
         {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} />}
         {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
         {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} />}

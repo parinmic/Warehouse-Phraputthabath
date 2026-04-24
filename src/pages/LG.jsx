@@ -7,6 +7,9 @@ export default function LG() {
   const [selectedTruck, setSelectedTruck] = useState('')
   const [loadingBay, setLoadingBay] = useState('')
   const [message, setMessage] = useState('')
+  const [manualPlate, setManualPlate] = useState('')
+  const [manualType, setManualType] = useState('')
+  const [manualMessage, setManualMessage] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -20,6 +23,27 @@ export default function LG() {
       .eq('Status', 'waiting')
       .eq('Que_Date', new Date().toISOString().split('T')[0])
     setTrucks(data || [])
+  }
+
+  async function handleManualAdd() {
+    if (!manualPlate || !manualType) {
+      setManualMessage('กรุณากรอกข้อมูลให้ครบ')
+      return
+    }
+    const { error } = await supabase.from('trucks').insert({
+      Truck_Plate: manualPlate.trim(),
+      Truck_Type: manualType,
+      Status: 'waiting',
+      Que_Date: new Date().toISOString().split('T')[0]
+    })
+    if (error) {
+      setManualMessage('เกิดข้อผิดพลาด: ' + error.message)
+    } else {
+      setManualMessage('✅ เพิ่มรถสำเร็จ')
+      setManualPlate('')
+      setManualType('')
+      fetchTrucks()
+    }
   }
 
   async function handleAssign() {
@@ -80,6 +104,52 @@ export default function LG() {
           className="w-full bg-green-500 text-white p-3 rounded-xl font-bold"
         >
           ยืนยันการจัดคิว
+        </button>
+      </div>
+      <div className="bg-white rounded-xl p-4 shadow space-y-4 mt-6">
+        <h2 className="text-lg font-bold text-gray-700">🚛 คิวรถวันนี้</h2>
+        {trucks.length === 0 ? (
+          <p className="text-center text-gray-400">ยังไม่มีรถในคิว</p>
+        ) : (
+          <ul className="divide-y">
+            {trucks.map(truck => (
+              <li key={truck.ID} className="py-2 flex justify-between text-sm">
+                <span className="font-semibold">{truck.Truck_Plate}</span>
+                <span className="text-gray-500">{truck.Truck_Type}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <hr />
+        <p className="text-sm font-bold text-gray-600">➕ เพิ่มรถ Manual</p>
+        <div>
+          <label className="block text-sm font-bold mb-1">ทะเบียนรถ</label>
+          <input
+            className="w-full border rounded-lg p-2"
+            placeholder="เช่น กข-1234"
+            value={manualPlate}
+            onChange={e => setManualPlate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-bold mb-1">ประเภทรถ</label>
+          <select
+            className="w-full border rounded-lg p-2"
+            value={manualType}
+            onChange={e => setManualType(e.target.value)}
+          >
+            <option value="">เลือกประเภทรถ</option>
+            <option value="รถเย็น">รถเย็น</option>
+            <option value="รถทั่วไป">รถทั่วไป</option>
+            <option value="รถพ่วง">รถพ่วง</option>
+          </select>
+        </div>
+        {manualMessage && <div className="text-center font-semibold text-green-600">{manualMessage}</div>}
+        <button
+          onClick={handleManualAdd}
+          className="w-full bg-blue-500 text-white p-3 rounded-xl font-bold"
+        >
+          เพิ่มรถเข้าคิว
         </button>
       </div>
     </div>
