@@ -909,7 +909,7 @@ const QC = ({ trucks, onUpdate }) => {
   const [flashLane, setFlashLane] = useState(null);
 
   // รับทุกรถที่สถานะ "picking" (พิมพ์เบิกแล้ว)
-  const eligible = trucks.filter(t => t.status === "picking");
+  const eligible = trucks.filter(t => ["arrived", "picking"].includes(t.status));
   const sel      = trucks.find(t => t.id === selId) || null;
   const actLane  = LOADING_LANES.find(l => l.id === lane);
   const thisLaneQCd = sel?.qcLanes?.[lane]?.done;
@@ -1329,7 +1329,7 @@ export default function App() {
   const badge = {
     driver:        queue.filter(q => !trucks.find(t => t.plate === q.plate)).length,
     picking:       trucks.filter(t => t.status === "arrived").length,
-    qc:            trucks.filter(t => t.status === "picking" && LOADING_LANES.some(l => !t.qcLanes?.[l.id]?.done)).length,
+    qc:            trucks.filter(t => ["arrived","picking"].includes(t.status) && LOADING_LANES.some(l => !t.qcLanes?.[l.id]?.done)).length,
     loading_parts: trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_parts?.done && !t.loadLanes?.lane_parts?.done).length,
     loading_head:  trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_head?.done  && !t.loadLanes?.lane_head?.done).length,
     loading_pork:  trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_pork?.done  && !t.loadLanes?.lane_pork?.done).length,
