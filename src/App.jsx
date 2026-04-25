@@ -464,9 +464,10 @@ const toHHMM = (val) => {
 
 const LGUpload = ({ queue, onSetQueue }) => {
   const [fileName, setFileName] = useState("");
-  const [status,   setStatus]   = useState("idle"); // idle | preview | done | error
+  const [status,   setStatus]   = useState("idle"); // idle | preview | uploading | done | error
   const [extracted, setExtracted] = useState([]);
   const [errMsg,   setErrMsg]   = useState("");
+  const [savedCount, setSavedCount] = useState(0);
   const [editId,   setEditId]   = useState(null);
   const [editData, setEditData] = useState({});
 
@@ -542,7 +543,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
     reader.readAsArrayBuffer(file);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const newQueue = extracted.map((t, i) => ({
       id:            `Q${Date.now()}-${i}`,
       date:          t.date          || "",
@@ -559,10 +560,18 @@ const LGUpload = ({ queue, onSetQueue }) => {
       loadTime:      t.loadTime     || "",
       exitTime:      t.exitTime     || "",
     }));
-    onSetQueue(newQueue);
-    setStatus("done");
-    setExtracted([]);
-    setFileName("");
+    setStatus("uploading");
+    setErrMsg("");
+    try {
+      await onSetQueue(newQueue);
+      setSavedCount(newQueue.length);
+      setStatus("done");
+      setExtracted([]);
+      setFileName("");
+    } catch (err) {
+      setErrMsg("บันทึกไม่สำเร็จ: " + err.message);
+      setStatus("error");
+    }
   };
 
   return (
@@ -620,9 +629,9 @@ const LGUpload = ({ queue, onSetQueue }) => {
             </table>
           </div>
           <div style={{ padding: 16 }}>
-            <button onClick={handleConfirm}
-              style={{ width: "100%", background: "#10b981", color: "#fff", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
-              ✅ ยืนยัน — ตั้งคิวรถ {extracted.length} คัน
+            <button onClick={handleConfirm} disabled={status === "uploading"}
+              style={{ width: "100%", background: status === "uploading" ? "#6ee7b7" : "#10b981", color: "#fff", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: status === "uploading" ? "not-allowed" : "pointer" }}>
+              {status === "uploading" ? "⏳ กำลังบันทึก..." : `✅ ยืนยัน — ตั้งคิวรถ ${extracted.length} คัน`}
             </button>
           </div>
         </div>
@@ -630,7 +639,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
 
       {status === "done" && (
         <div style={{ padding: "13px 16px", background: "#d1fae5", borderRadius: 12, color: "#065f46", fontWeight: 700, marginBottom: 14 }}>
-          ✅ ตั้งคิวรถเรียบร้อย {queue.length} คัน — พร้อมให้คนขับ Scan เข้า
+          ✅ ตั้งคิวรถเรียบร้อย {savedCount} คัน — พร้อมให้คนขับ Scan เข้า
         </div>
       )}
 
@@ -1315,9 +1324,12 @@ export default function App() {
   };
 
   const handleSetQueue = async (newQueue) => {
-    await supabase.from("wh_queue").delete().neq("id", "");
-    if (newQueue.length > 0)
-      await supabase.from("wh_queue").upsert(newQueue.map(q => ({ id: q.id, data: q })));
+    const { error: delErr } = await supabase.from("wh_queue").delete().neq("id", "");
+    if (delErr) throw new Error(delErr.message);
+    if (newQueue.length > 0) {
+      const { error: upErr } = await supabase.from("wh_queue").upsert(newQueue.map(q => ({ id: q.id, data: q })));
+      if (upErr) throw new Error(upErr.message);
+    }
     // merge ข้อมูลคิวกับรถที่เช็คอินไปแล้ว
     for (const truck of trucks) {
       const match = newQueue.find(q => plateNum(q.plate) === plateNum(truck.plate) && plateNum(q.plate) !== "");
