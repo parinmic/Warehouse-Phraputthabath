@@ -316,6 +316,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
             <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
           </div>
           <button onClick={onReset}
+            className="desktop-only"
             style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
             🗑️ ล้างวันใหม่
           </button>

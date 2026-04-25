@@ -7,3 +7,7 @@
 .row-urgent {
   animation: blink-urgent 1.2s ease-in-out infinite;
 }
+
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+}
