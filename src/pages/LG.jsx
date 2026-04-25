@@ -111,14 +111,24 @@ export default function LG() {
         {trucks.length === 0 ? (
           <p className="text-center text-gray-400">ยังไม่มีรถในคิว</p>
         ) : (
-          <ul className="divide-y">
-            {trucks.map(truck => (
-              <li key={truck.ID} className="py-2 flex justify-between text-sm">
-                <span className="font-semibold">{truck.Truck_Plate}</span>
-                <span className="text-gray-500">{truck.Truck_Type}</span>
-              </li>
-            ))}
-          </ul>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-gray-500 border-b">
+                <th className="text-left py-1 pr-3">วันที่</th>
+                <th className="text-left py-1 pr-3">ทะเบียนรถ</th>
+                <th className="text-left py-1">ประเภทรถ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {trucks.map(truck => (
+                <tr key={truck.ID}>
+                  <td className="py-2 pr-3 text-gray-500">{truck.Que_Date}</td>
+                  <td className="py-2 pr-3 font-semibold">{truck.Truck_Plate}</td>
+                  <td className="py-2 text-gray-500">{truck.Truck_Type}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
         <hr />
         <p className="text-sm font-bold text-gray-600">➕ เพิ่มรถ Manual</p>

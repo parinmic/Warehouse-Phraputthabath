@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import { supabase } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FLOW:
@@ -11,18 +12,6 @@ import * as XLSX from "xlsx";
 // 6. Picking พิมพ์สรุปค่าย (โหลดแล้วอย่างน้อย 1 ลาน) → status: "summary_printed"
 // 7. วางแผน ออก Invoice → status: "invoiced"
 // ─────────────────────────────────────────────────────────────────────────────
-
-const STORAGE_KEY_QUEUE  = "wh_queue";
-const STORAGE_KEY_TRUCKS = "wh_trucks";
-
-const loadStorage = (key, fallback) => {
-  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
-};
-const saveStorage = (key, val) => {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
-};
-
-const INITIAL_QUEUE = loadStorage(STORAGE_KEY_QUEUE, []);
 
 const LOADING_LANES = [
   { id: "lane_parts", label: "ลานโหลดชิ้นส่วน",       shortLabel: "ลานโหลดชิ้นส่วน", tinyLabel: "ชิ้นส่วน",     emoji: "🥩", color: "#f97316", bg: "#fff7ed", border: "#fed7aa" },
@@ -204,14 +193,25 @@ const TruckCard = ({ t, children, highlight }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── TIME BAR ──────────────────────────────────────────────────────────────────
-// ── TIME BAR ──────────────────────────────────────────────────────────────────
-const TimeBar = ({ exitTime, done, invoicedAt }) => {
+const parseExitDatetime = (dateStr, timeStr) => {
+  if (!timeStr) return null;
+  const [h, min] = timeStr.split(":").map(Number);
+  if (dateStr) {
+    const [day, month, year] = dateStr.split("/").map(Number);
+    const d = new Date(year, month - 1, day, h, min, 0, 0);
+    if (h * 60 + min <= 9 * 60) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  // ไม่มี date → fallback วันนี้ + ปรับข้ามคืน
+  const d = new Date(); d.setHours(h, min, 0, 0);
+  if (h * 60 + min <= 9 * 60) d.setDate(d.getDate() + 1);
+  return d;
+};
+
+const TimeBar = ({ exitTime, date, done, invoicedAt }) => {
   if (!exitTime) return <span style={{ color: "#d1d5db", fontSize: 11 }}>—</span>;
-  const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-  const now = new Date(); const nowMins = now.getHours() * 60 + now.getMinutes();
-  let exitMins = toMins(exitTime);
-  if (exitMins <= 9 * 60) exitMins += 24 * 60; // 00:00–09:00 คือวันถัดไป
-  const remaining = exitMins - nowMins;
+  const exitDt = parseExitDatetime(date, exitTime);
+  const remaining = exitDt ? Math.round((exitDt - Date.now()) / 60000) : 0;
   const totalWindow = 240;
   const color = remaining > 60 ? "#22c55e" : remaining > 20 ? "#f59e0b" : "#ef4444";
 
@@ -240,6 +240,41 @@ const TimeBar = ({ exitTime, done, invoicedAt }) => {
 };
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
+const exportArchiveExcel = async (dateStr) => {
+  const { data, error } = await supabase.from("wh_archive").select("*").eq("archive_date", dateStr).single();
+  if (error || !data) { alert("ไม่พบข้อมูลวันที่ " + dateStr); return; }
+  const { queue, trucks } = data;
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const rows = queue.map((q, i) => {
+    const truck = trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "");
+    return {
+      "ลำดับ":                          i + 1,
+      "วันที่":                         q.date || dateStr,
+      "กลุ่มลูกค้า":                   q.customerGroup || "",
+      "Zone":                           q.zone || "",
+      "ทะเบียนรถ":                      q.plate || "",
+      "น้ำหนักจัดรถ":                   "",
+      "เวลารถเข้าโรงงาน STD":           q.entryTime || "",
+      "เวลารถเข้าโรงงาน ACT":           truck?.arrivedAt || "",
+      "เวลาเข้าโหลดชิ้นส่วน STD":      "",
+      "เวลาเข้าโหลดชิ้นส่วน ACT":      truck?.qcLanes?.lane_parts?.doneAt || "",
+      "เวลาเสร็จสิ้นโหลดชิ้นส่วน":    truck?.loadLanes?.lane_parts?.doneAt || "",
+      "เวลาเข้าโหลดหัวเครื่องใน STD":  "",
+      "เวลาเข้าโหลดหัวเครื่องใน ACT":  truck?.qcLanes?.lane_head?.doneAt || "",
+      "เวลาเสร็จสิ้นโหลดหัวเครื่องใน": truck?.loadLanes?.lane_head?.doneAt || "",
+      "เวลาทำใบสรุปจ่าย":              truck?.summaryPrintedAt || "",
+      "เวลาทำใบ Invoice":               truck?.invoicedAt || "",
+      "เวลาออกจากโรงงาน":              q.exitTime || "",
+      "WT ลูกค้า":                      "",
+      "หมายเหตุ":                       "",
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, dateStr);
+  XLSX.writeFile(wb, `คิวรถ_${dateStr}.xlsx`);
+};
+
 const Dashboard = ({ trucks, queue, onReset }) => {
   const cnt = (s) => trucks.filter(t => t.status === s).length;
   const stats = [
@@ -253,18 +288,19 @@ const Dashboard = ({ trucks, queue, onReset }) => {
   const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
   const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
   const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+  const getRemMins = (row) => {
+    const dt = parseExitDatetime(row.date, row.exitTime);
+    return dt ? Math.round((dt - Date.now()) / 60000) : Infinity;
+  };
   const allRows = [
-    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
-    ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
+    ...queue.map(q => ({ key: q.id, date: q.date || "", plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
     const aInv = a.truck?.status === "invoiced";
     const bInv = b.truck?.status === "invoiced";
     if (aInv && !bInv) return 1;
     if (!aInv && bInv) return -1;
-    const adjMins = t => { let m = toMins(t); if (m <= 9 * 60) m += 24 * 60; return m; };
-    const aRem = a.exitTime ? adjMins(a.exitTime) - nowMins : Infinity;
-    const bRem = b.exitTime ? adjMins(b.exitTime) - nowMins : Infinity;
-    return aRem - bRem;
+    return getRemMins(a) - getRemMins(b);
   });
 
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
@@ -279,7 +315,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 Main Dashboard</h2>
             <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
           </div>
-          <button onClick={() => { if (window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) onReset(); }}
+          <button onClick={onReset}
             style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
             🗑️ ล้างวันใหม่
           </button>
@@ -315,9 +351,8 @@ const Dashboard = ({ trucks, queue, onReset }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {allRows.map(({ key, plate, customerGroup, entryTime, exitTime, truck }) => {
-                      const adjE = exitTime ? (m => m <= 9*60 ? m+24*60 : m)(toMins(exitTime)) : null;
-                      const rem = adjE !== null ? adjE - nowMins : Infinity;
+                    {allRows.map(({ key, date, plate, customerGroup, entryTime, exitTime, truck }) => {
+                      const rem = getRemMins({ date, exitTime });
                       const urgent = rem < 20 && truck?.status !== "invoiced";
                       return (
                       <tr key={key} className={urgent ? "row-urgent" : ""} style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -329,7 +364,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
                             ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
                             : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
                         </td>
-                        <td style={{ padding: "10px 12px" }}><TimeBar exitTime={exitTime} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} /></td>
+                        <td style={{ padding: "10px 12px" }}><TimeBar exitTime={exitTime} date={date} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} /></td>
                         <td style={{ padding: "10px 12px" }}>
                           {!truck
                             ? <span style={{ fontSize: 11, color: "#9ca3af" }}>รอเช็คอิน</span>
@@ -374,6 +409,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
 
 // ── 1. LG UPLOAD (Excel → parse → queue) ─────────────────────────────────────
 const COL_MAP = {
+  date:          ["วันที่","date"],
   plate:         ["ทะเบียนรถ","ทะเบียน","plate"],
   customerGroup: ["กลุ่มลูกค้า","customergroup"],
   entryTime:     ["เวลารถเข้าโรงงาน","เวลาเข้าโรงงาน","เข้าโรงงาน","entrytime"],
@@ -388,6 +424,25 @@ const matchCol = (header) => {
     if (aliases.some(a => h.includes(norm(a)))) return field;
   }
   return null;
+};
+
+const parseQueueDateToISO = (dateStr) => {
+  if (!dateStr) return new Date().toISOString().split("T")[0];
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return new Date().toISOString().split("T")[0];
+  const [d, m, y] = parts.map(Number);
+  return `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+};
+
+const toDateStr = (val) => {
+  if (val === "" || val == null) return "";
+  if (typeof val === "string" && /\d/.test(val)) return val.trim();
+  const num = typeof val === "number" ? val : parseFloat(val);
+  if (!isNaN(num) && num > 1000) {
+    const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+    return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
+  }
+  return String(val).trim();
 };
 
 const toHHMM = (val) => {
@@ -414,6 +469,9 @@ const LGUpload = ({ queue, onSetQueue }) => {
   const [editId,   setEditId]   = useState(null);
   const [editData, setEditData] = useState({});
 
+  const [addingManual, setAddingManual] = useState(false);
+  const [manualData, setManualData] = useState({ date: "", plate: "", customerGroup: "", entryTime: "", exitTime: "" });
+
   const startEdit = (q) => { setEditId(q.id); setEditData({ plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime }); };
   const cancelEdit = () => { setEditId(null); setEditData({}); };
   const saveEdit = () => {
@@ -421,6 +479,12 @@ const LGUpload = ({ queue, onSetQueue }) => {
     setEditId(null); setEditData({});
   };
   const deleteRow = (id) => { if (window.confirm("ลบรถคันนี้ออกจากคิว?")) onSetQueue(queue.filter(q => q.id !== id)); };
+  const saveManual = () => {
+    if (!manualData.plate) return;
+    onSetQueue([...queue, { id: `M${Date.now()}`, ...manualData, time: manualData.entryTime, driver: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", loadTime: "" }]);
+    setManualData({ date: "", plate: "", customerGroup: "", entryTime: "", exitTime: "" });
+    setAddingManual(false);
+  };
 
   const inputStyle = { border: "1px solid #d1d5db", borderRadius: 6, padding: "4px 8px", fontSize: 12, width: "100%", boxSizing: "border-box" };
 
@@ -454,13 +518,14 @@ const LGUpload = ({ queue, onSetQueue }) => {
         });
 
         const timeFields = new Set(["entryTime","exitTime"]);
+        const dateFields = new Set(["date"]);
         const trucks = [];
         for (let i = headerIdx + 1; i < rows.length; i++) {
           const row = rows[i];
           const obj = {};
           headers.forEach((field, ci) => {
             if (!field) return;
-            obj[field] = timeFields.has(field) ? toHHMM(row[ci]) : String(row[ci] ?? "").trim();
+            obj[field] = timeFields.has(field) ? toHHMM(row[ci]) : dateFields.has(field) ? toDateStr(row[ci]) : String(row[ci] ?? "").trim();
           });
           if (obj.plate) trucks.push(obj);
         }
@@ -479,6 +544,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
   const handleConfirm = () => {
     const newQueue = extracted.map((t, i) => ({
       id:            `Q${Date.now()}-${i}`,
+      date:          t.date          || "",
       plate:         t.plate        || "",
       driver:        "",
       customerGroup: t.customerGroup || "",
@@ -534,7 +600,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน"].map(h => (
+                  {["วันที่","ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน"].map(h => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
@@ -542,6 +608,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
               <tbody>
                 {extracted.map((t, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "8px 12px", color: "#6b7280" }}>{t.date}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 800 }}>{t.plate}</td>
                     <td style={{ padding: "8px 12px" }}>{t.customerGroup}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>{t.entryTime}</td>
@@ -576,7 +643,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน",""].map(h => (
+                  {["วันที่","ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน",""].map(h => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
@@ -586,6 +653,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
                   const isEditing = editId === q.id;
                   return (
                     <tr key={q.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : undefined }}>
+                      <td style={{ padding: "8px 12px", color: "#6b7280" }}>{q.date}</td>
                       <td style={{ padding: "8px 12px", fontWeight: 800 }}>
                         {isEditing
                           ? <input style={inputStyle} value={editData.plate} onChange={e => setEditData(d => ({ ...d, plate: e.target.value }))} />
@@ -622,8 +690,28 @@ const LGUpload = ({ queue, onSetQueue }) => {
                     </tr>
                   );
                 })}
+                {addingManual && (
+                  <tr style={{ borderBottom: "1px solid #f3f4f6", background: "#f0fdf4" }}>
+                    <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="24/4/2026" value={manualData.date} onChange={e => setManualData(d => ({ ...d, date: e.target.value }))} /></td>
+                    <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="กข-1234" value={manualData.plate} onChange={e => setManualData(d => ({ ...d, plate: e.target.value }))} /></td>
+                    <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="กลุ่มลูกค้า" value={manualData.customerGroup} onChange={e => setManualData(d => ({ ...d, customerGroup: e.target.value }))} /></td>
+                    <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="HH:MM" value={manualData.entryTime} onChange={e => setManualData(d => ({ ...d, entryTime: e.target.value }))} /></td>
+                    <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="HH:MM" value={manualData.exitTime} onChange={e => setManualData(d => ({ ...d, exitTime: e.target.value }))} /></td>
+                    <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button onClick={saveManual} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
+                        <button onClick={() => setAddingManual(false)} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+          </div>
+          <div style={{ padding: "12px 16px", borderTop: "1px solid #f3f4f6" }}>
+            <button onClick={() => setAddingManual(true)} style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px dashed #93c5fd", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%" }}>
+              + เพิ่มทะเบียนรถ Manual
+            </button>
           </div>
         </div>
       )}
@@ -731,7 +819,7 @@ const Picking = ({ trucks, queue, onUpdate }) => {
     if (!truck) return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
     if (doneStep6(truck)) return <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
     if (canStep6(truck)) return (
-      <button onClick={() => onUpdate(truck.id, { summaryPrinted: true, status: "summary_printed" })}
+      <button onClick={() => onUpdate(truck.id, { summaryPrinted: true, summaryPrintedAt: TIME_NOW(), status: "summary_printed" })}
         style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
         🖨️ สรุป
       </button>
@@ -832,7 +920,7 @@ const QC = ({ trucks, onUpdate }) => {
 
   const handleSubmit = () => {
     if (!sel || !temp) return;
-    const qcLanes = { ...(sel.qcLanes || {}), [lane]: { done: true, temp, photo } };
+    const qcLanes = { ...(sel.qcLanes || {}), [lane]: { done: true, temp, photo, doneAt: TIME_NOW() } };
     onUpdate(sel.id, { qcLanes });
     setFlashLane(lane); setTemp(""); setPhoto(null);
     setTimeout(() => setFlashLane(null), 2500);
@@ -1123,32 +1211,118 @@ const Planning = ({ trucks, queue, onUpdate }) => {
   );
 };
 
+// ── DOWNLOAD ─────────────────────────────────────────────────────────────────
+const Download = () => {
+  const [exportDate, setExportDate] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [archives, setArchives] = useState([]);
+
+  useEffect(() => {
+    supabase.from("wh_archive").select("archive_date").order("archive_date", { ascending: false })
+      .then(({ data }) => setArchives((data || []).map(r => r.archive_date)));
+  }, []);
+
+  const handleDownload = async () => {
+    if (!exportDate) return;
+    setLoading(true);
+    await exportArchiveExcel(exportDate);
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 20px", fontWeight: 900, fontSize: 22 }}>📥 ดาวน์โหลดข้อมูลย้อนหลัง</h2>
+      <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: 24, maxWidth: 480 }}>
+        <label style={{ display: "block", fontWeight: 700, fontSize: 13, marginBottom: 8 }}>เลือกวันที่</label>
+        <input
+          type="date"
+          value={exportDate}
+          onChange={e => setExportDate(e.target.value)}
+          style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "10px 12px", fontSize: 14, boxSizing: "border-box", marginBottom: 12 }}
+        />
+        <button
+          onClick={handleDownload}
+          disabled={!exportDate || loading}
+          style={{ width: "100%", background: exportDate ? "#111" : "#e5e7eb", color: exportDate ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontSize: 15, fontWeight: 700, cursor: exportDate ? "pointer" : "default" }}
+        >
+          {loading ? "กำลังดาวน์โหลด..." : "⬇️ ดาวน์โหลด Excel"}
+        </button>
+        {archives.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", marginBottom: 8 }}>ข้อมูลที่มีใน Archive</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {archives.map(d => (
+                <button key={d} onClick={() => setExportDate(d)}
+                  style={{ background: exportDate === d ? "#111" : "#f3f4f6", color: exportDate === d ? "#fff" : "#374151", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
+const fetchQueue  = async () => { const { data } = await supabase.from("wh_queue").select("*");  return (data || []).map(r => r.data); };
+const fetchTrucks = async () => { const { data } = await supabase.from("wh_trucks").select("*"); return (data || []).map(r => r.data); };
+
 export default function App() {
-  const [queue,  setQueue]  = useState(INITIAL_QUEUE);
-  const [trucks, setTrucks] = useState(() => loadStorage(STORAGE_KEY_TRUCKS, []));
+  const [queue,  setQueue]  = useState([]);
+  const [trucks, setTrucks] = useState([]);
   const [tab,    setTab]    = useState("dashboard");
   const [time,   setTime]   = useState(TIME_NOW());
 
   useEffect(() => { const id = setInterval(() => setTime(TIME_NOW()), 15000); return () => clearInterval(id); }, []);
-  useEffect(() => { saveStorage(STORAGE_KEY_QUEUE, queue); }, [queue]);
-  useEffect(() => { saveStorage(STORAGE_KEY_TRUCKS, trucks); }, [trucks]);
+
+  useEffect(() => {
+    fetchQueue().then(setQueue);
+    fetchTrucks().then(setTrucks);
+
+    const channel = supabase.channel("app-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wh_queue" },  () => fetchQueue().then(setQueue))
+      .on("postgres_changes", { event: "*", schema: "public", table: "wh_trucks" }, () => fetchTrucks().then(setTrucks))
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
 
-  const handleScan      = (t) => setTrucks(p => [t, ...p]);
-  const handleUpdate    = (id, upd) => setTrucks(p => p.map(t => t.id === id ? { ...t, ...upd } : t));
-  const handleReset     = () => { setQueue([]); setTrucks([]); };
-  const handleSetQueue  = (newQueue) => {
-    setQueue(newQueue);
+  const handleScan = async (t) => {
+    await supabase.from("wh_trucks").insert({ id: t.id, data: t });
+  };
+
+  const handleUpdate = async (id, upd) => {
+    const truck = trucks.find(t => t.id === id);
+    if (!truck) return;
+    await supabase.from("wh_trucks").upsert({ id, data: { ...truck, ...upd } });
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) return;
+    const archiveDate = queue.length > 0
+      ? parseQueueDateToISO(queue[0].date)
+      : new Date().toISOString().split("T")[0];
+    await supabase.from("wh_archive").upsert({ archive_date: archiveDate, queue, trucks });
+    await supabase.from("wh_queue").delete().neq("id", "");
+    await supabase.from("wh_trucks").delete().neq("id", "");
+  };
+
+  const handleSetQueue = async (newQueue) => {
+    await supabase.from("wh_queue").delete().neq("id", "");
+    if (newQueue.length > 0)
+      await supabase.from("wh_queue").upsert(newQueue.map(q => ({ id: q.id, data: q })));
     // merge ข้อมูลคิวกับรถที่เช็คอินไปแล้ว
-    setTrucks(prev => prev.map(truck => {
+    for (const truck of trucks) {
       const match = newQueue.find(q => plateNum(q.plate) === plateNum(truck.plate) && plateNum(q.plate) !== "");
-      if (!match) return truck;
-      return { ...truck, plate: match.plate, customerGroup: match.customerGroup, zone: match.zone, product: match.customerGroup, destination: match.zone, entryTime: match.entryTime, exitTime: match.exitTime };
-    }));
+      if (!match) continue;
+      await supabase.from("wh_trucks").upsert({ id: truck.id, data: { ...truck, plate: match.plate, customerGroup: match.customerGroup, zone: match.zone, product: match.customerGroup, destination: match.zone, entryTime: match.entryTime, exitTime: match.exitTime } });
+    }
   };
 
   const badge = {
@@ -1171,6 +1345,7 @@ export default function App() {
     { id: "loading_head",  label: "⑤ หัว/ใน",  icon: "pig_head"  },
     { id: "loading_pork",  label: "⑤ หมูซีก",  icon: "pig_side"  },
     { id: "planning",      label: "⑦ Ordering", icon: "plan"      },
+    { id: "download",      label: "⑧ Download", icon: "invoice"   },
   ];
 
   return (
@@ -1204,6 +1379,7 @@ export default function App() {
         {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
         {tab === "loading_pork"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_pork" />}
         {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+        {tab === "download"  && <Download />}
       </div>
     </div>
   );
