@@ -297,11 +297,14 @@ const Dashboard = ({ trucks, queue, onReset }) => {
     ...queue.map(q => ({ key: q.id, date: q.date || "", plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
-    const aInv = a.truck?.status === "invoiced";
-    const bInv = b.truck?.status === "invoiced";
-    if (aInv && !bInv) return 1;
-    if (!aInv && bInv) return -1;
-    return getRemMins(a) - getRemMins(b);
+    const rank = row => {
+      if (!row.truck) return 1;
+      if (["invoiced","summary_printed"].includes(row.truck.status)) return 2;
+      return 0; // arrived / picking
+    };
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return getRemMins(a) - getRemMins(b); // เกินมากสุด (ติดลบมากสุด) ขึ้นก่อน
   });
 
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
