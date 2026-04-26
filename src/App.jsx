@@ -37,6 +37,25 @@ const TODAY = new Date().toLocaleDateString("th-TH", { year: "numeric", month: "
 const TIME_NOW = () => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 const getStep = (status) => STATUS_META[status]?.step ?? 0;
 
+const DATE_STR = () => new Date().toISOString().split("T")[0];
+const safePlate = p => String(p).replace(/[^a-zA-Z0-9ก-๙]/g, "_");
+
+async function uploadPhotos(folder, plate, photos) {
+  if (!photos || !photos.length) return [];
+  const ts = Date.now();
+  const urls = [];
+  for (let i = 0; i < photos.length; i++) {
+    const blob = await fetch(photos[i]).then(r => r.blob());
+    const ext = blob.type.split("/")[1] || "jpg";
+    const path = `${folder}/${DATE_STR()}/${safePlate(plate)}/${ts}_${i}.${ext}`;
+    const { error } = await supabase.storage.from("truck-photos").upload(path, blob);
+    if (error) throw new Error(error.message);
+    const { data } = supabase.storage.from("truck-photos").getPublicUrl(path);
+    urls.push(data.publicUrl);
+  }
+  return urls;
+}
+
 // ─── ICONS ───────────────────────────────────────────────────────────────────
 const Icon = ({ name, size = 20 }) => {
   const icons = {
@@ -1046,11 +1065,12 @@ const Picking = ({ trucks, queue, onUpdate }) => {
 
 // ── 4. QC (per-lane) ──────────────────────────────────────────────────────────
 const QC = ({ trucks, onUpdate }) => {
-  const [selId, setSelId] = useState("");
-  const [lane,  setLane]  = useState("lane_parts");
-  const [temp,  setTemp]  = useState("");
-  const [photo, setPhoto] = useState(null);
+  const [selId,     setSelId]     = useState("");
+  const [lane,      setLane]      = useState("lane_parts");
+  const [temp,      setTemp]      = useState("");
+  const [photo,     setPhoto]     = useState(null);
   const [flashLane, setFlashLane] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   // รับทุกรถที่สถานะ "picking" (พิมพ์เบิกแล้ว)
   const eligible = trucks.filter(t => ["arrived", "picking"].includes(t.status));
@@ -1063,12 +1083,20 @@ const QC = ({ trucks, onUpdate }) => {
     Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(setPhoto);
   };
 
-  const handleSubmit = () => {
-    if (!sel || !temp) return;
-    const qcLanes = { ...(sel.qcLanes || {}), [lane]: { done: true, temp, photo, doneAt: TIME_NOW() } };
-    onUpdate(sel.id, { qcLanes });
-    setFlashLane(lane); setTemp(""); setPhoto(null);
-    setTimeout(() => setFlashLane(null), 2500);
+  const handleSubmit = async () => {
+    if (!sel || !temp || uploading) return;
+    setUploading(true);
+    try {
+      const photoUrls = await uploadPhotos(`qc`, sel.plate, Array.isArray(photo) ? photo : (photo ? [photo] : []));
+      const qcLanes = { ...(sel.qcLanes || {}), [lane]: { done: true, temp, photos: photoUrls, doneAt: TIME_NOW() } };
+      onUpdate(sel.id, { qcLanes });
+      setFlashLane(lane); setTemp(""); setPhoto(null);
+      setTimeout(() => setFlashLane(null), 2500);
+    } catch (e) {
+      alert("อัพโหลดรูปไม่สำเร็จ: " + e.message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const hasAnyQC = t => t.qcLanes && Object.values(t.qcLanes).some(l => l.done);
@@ -1144,9 +1172,9 @@ const QC = ({ trucks, onUpdate }) => {
         <PhotoUploader label="📷 ถ่ายรูปอุณหภูมิ" value={photo} onChange={handlePhoto} onRemove={setPhoto} />
       </div>
 
-      <button onClick={handleSubmit} disabled={!sel || !temp}
-        style={{ width: "100%", background: sel && temp ? actLane.color : "#e5e7eb", color: sel && temp ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "14px 0", fontWeight: 700, fontSize: 15, cursor: sel && temp ? "pointer" : "default", marginBottom: 20 }}>
-        {!sel ? "เลือกทะเบียนรถก่อน" : !temp ? "กรอกอุณหภูมิก่อน" : `✅ บันทึก QC → ${actLane.label}`}
+      <button onClick={handleSubmit} disabled={!sel || !temp || uploading}
+        style={{ width: "100%", background: sel && temp && !uploading ? actLane.color : "#e5e7eb", color: sel && temp && !uploading ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "14px 0", fontWeight: 700, fontSize: 15, cursor: sel && temp && !uploading ? "pointer" : "default", marginBottom: 20 }}>
+        {uploading ? "⏳ กำลังอัพโหลดรูป..." : !sel ? "เลือกทะเบียนรถก่อน" : !temp ? "กรอกอุณหภูมิก่อน" : `✅ บันทึก QC → ${actLane.label}`}
       </button>
 
     </div>
@@ -1157,9 +1185,9 @@ const QC = ({ trucks, onUpdate }) => {
 const LoadingYard = ({ trucks, onUpdate, laneId }) => {
   const [activeLane, setActiveLane] = useState(laneId ?? "lane_parts");
   const [forms, setForms] = useState({
-    lane_parts: { selId: "", photo: null, note: "", flash: false },
-    lane_head:  { selId: "", photo: null, note: "", flash: false },
-    lane_pork:  { selId: "", photo: null, note: "", flash: false },
+    lane_parts: { selId: "", photo: null, note: "", flash: false, uploading: false },
+    lane_head:  { selId: "", photo: null, note: "", flash: false, uploading: false },
+    lane_pork:  { selId: "", photo: null, note: "", flash: false, uploading: false },
   });
   const setF = (lId, upd) => setForms(p => ({ ...p, [lId]: { ...p[lId], ...upd } }));
   const curLane = LOADING_LANES.find(l => l.id === activeLane);
@@ -1187,13 +1215,21 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
     setF(activeLane, { selId: "", photo: null, note: "" });
   };
 
-  const handleLoad = () => {
+  const handleLoad = async () => {
     if (!sel) return;
     if (!window.confirm(`ยืนยัน: บันทึกโหลดเสร็จ ${sel.plate}?`)) return;
-    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { done: true, photo: form.photo, note: form.note, doneAt: TIME_NOW() } };
-    onUpdate(sel.id, { loadLanes });
-    setF(activeLane, { selId: "", photo: null, note: "", flash: true });
-    setTimeout(() => setF(activeLane, { flash: false }), 2500);
+    setF(activeLane, { uploading: true });
+    try {
+      const photos = Array.isArray(form.photo) ? form.photo : (form.photo ? [form.photo] : []);
+      const photoUrls = await uploadPhotos(`loading/${activeLane}`, sel.plate, photos);
+      const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { done: true, photos: photoUrls, note: form.note, doneAt: TIME_NOW() } };
+      onUpdate(sel.id, { loadLanes });
+      setF(activeLane, { selId: "", photo: null, note: "", flash: true, uploading: false });
+      setTimeout(() => setF(activeLane, { flash: false }), 2500);
+    } catch (e) {
+      alert("อัพโหลดรูปไม่สำเร็จ: " + e.message);
+      setF(activeLane, { uploading: false });
+    }
   };
 
   const doneTrucks = trucks.filter(t => ["summary_printed","invoiced"].includes(t.status));
@@ -1257,13 +1293,13 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
           style={{ width: "100%", border: `1.5px solid ${curLane.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 12, resize: "vertical", fontFamily: "inherit" }}
         />
         <PhotoUploader label="📷 ถ่ายรูปหลังโหลดเสร็จ" value={form.photo} onChange={handlePhoto(activeLane)} onRemove={photos => setF(activeLane, { photo: photos })} />
-        <button onClick={handleWaiting} disabled={!sel}
-          style={{ width: "100%", background: sel ? "#f59e0b" : "#e5e7eb", color: sel ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel ? "pointer" : "default", marginBottom: 8 }}>
+        <button onClick={handleWaiting} disabled={!sel || form.uploading}
+          style={{ width: "100%", background: sel && !form.uploading ? "#f59e0b" : "#e5e7eb", color: sel && !form.uploading ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel && !form.uploading ? "pointer" : "default", marginBottom: 8 }}>
           ⏳ รอเติมสินค้า
         </button>
-        <button onClick={handleLoad} disabled={!sel}
-          style={{ width: "100%", background: sel ? curLane.color : "#e5e7eb", color: sel ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel ? "pointer" : "default" }}>
-          ✅ บันทึกโหลดเสร็จ
+        <button onClick={handleLoad} disabled={!sel || form.uploading}
+          style={{ width: "100%", background: sel && !form.uploading ? curLane.color : "#e5e7eb", color: sel && !form.uploading ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel && !form.uploading ? "pointer" : "default" }}>
+          {form.uploading ? "⏳ กำลังอัพโหลดรูป..." : "✅ บันทึกโหลดเสร็จ"}
         </button>
       </div>
 
