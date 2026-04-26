@@ -1650,34 +1650,43 @@ export default function App() {
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
 
+  const calcTimeDiffStr = (std, actual) => {
+    if (!std || !actual) return "";
+    const [h1, m1] = std.split(":").map(Number);
+    const [h2, m2] = actual.split(":").map(Number);
+    if (isNaN(h1) || isNaN(h2)) return "";
+    const diffMin = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (diffMin === 0) return "(ตรงเวลา)";
+    const absDiff = Math.abs(diffMin);
+    const hrs = Math.floor(absDiff / 60);
+    const mins = absDiff % 60;
+    const str = `${hrs}:${mins.toString().padStart(2, '0')} ชม.`;
+    return diffMin < 0 ? `(ก่อน ${str})` : `(สาย ${str})`;
+  };
+
   const handleScan = async (t) => {
     await supabase.from("wh_trucks").insert({ id: t.id, data: t });
-    sendTeamsNotification(`🚛 รถ ${t.plate} เช็คอินเข้าโรงงานแล้ว`, { "ทะเบียน": t.plate, "กลุ่มลูกค้า": t.customerGroup, "เวลา": TIME_NOW() });
+    
+    const actualTime = TIME_NOW();
+    const diffStr = calcTimeDiffStr(t.entryTime, actualTime);
+    sendTeamsNotification(`🚛 รถ ${t.plate} เช็คอินเข้าโรงงานแล้ว`, { 
+      "ทะเบียน": t.plate, 
+      "กลุ่มลูกค้า": t.customerGroup, 
+      "เวลา STD": t.entryTime || "-",
+      "เวลาเข้าจริง": `${actualTime} ${diffStr}`
+    });
   };
 
   const handleUpdate = async (id, upd) => {
     const truck = trucks.find(t => t.id === id);
     if (!truck) return;
 
-    if (upd.status === "invoiced" && truck.status !== "invoiced") {
-      sendTeamsNotification(`📄 รถ ${truck.plate} ออก Invoice แล้ว`, { "ทะเบียน": truck.plate, "เวลา": TIME_NOW() });
-    }
-    if (upd.qcLanes) {
-       for (const lane of Object.keys(upd.qcLanes)) {
-         if (upd.qcLanes[lane].done && (!truck.qcLanes || !truck.qcLanes[lane] || !truck.qcLanes[lane].done)) {
-           const lName = LOADING_LANES.find(l => l.id === lane)?.tinyLabel || lane;
-           const t = upd.qcLanes[lane].temp;
-           const img = upd.qcLanes[lane].photos?.[0] || null;
-           sendTeamsNotification(`🌡️ QC ผ่าน — รถ ${truck.plate}`, { "ลาน": lName, "อุณหภูมิ": t + "°C", "เวลา": upd.qcLanes[lane].doneAt || TIME_NOW() }, img);
-         }
-       }
-    }
     if (upd.loadLanes) {
        for (const lane of Object.keys(upd.loadLanes)) {
          if (upd.loadLanes[lane].done && (!truck.loadLanes || !truck.loadLanes[lane] || !truck.loadLanes[lane].done)) {
            const lName = LOADING_LANES.find(l => l.id === lane)?.tinyLabel || lane;
            const img = upd.loadLanes[lane].photos?.[0] || null;
-           sendTeamsNotification(`✅ โหลดเสร็จ — รถ ${truck.plate}`, { "ลาน": lName, "เวลา": upd.loadLanes[lane].doneAt || TIME_NOW() }, img);
+           sendTeamsNotification(`✅ โหลดเสร็จ — รถ ${truck.plate}`, { "ลานโหลด": lName, "เวลาโหลดเสร็จ": upd.loadLanes[lane].doneAt || TIME_NOW() }, img);
          }
        }
     }
