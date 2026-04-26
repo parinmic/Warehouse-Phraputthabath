@@ -58,6 +58,16 @@ export const sendTeamsNotification = async (title, details, imageUrls = []) => {
           }))
         });
       }
+      
+      // Add explicit buttons because Teams mobile often ignores selectAction on images
+      card.attachments[0].content.body.push({
+        type: "ActionSet",
+        actions: images.map((url, index) => ({
+          type: "Action.OpenUrl",
+          title: `🔍 ดูรูปใหญ่ ${images.length > 1 ? `(${index + 1})` : ""}`,
+          url: url
+        }))
+      });
     }
 
     const response = await fetch(TEAMS_WEBHOOK_URL, {
