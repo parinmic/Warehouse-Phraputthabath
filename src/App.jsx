@@ -399,7 +399,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
                                       );
                                       if (waiting) return (
                                           <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                            {l.tinyLabel}
+                                            รอสินค้า {l.tinyLabel}
                                             <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
                                           </div>
                                         );
@@ -970,7 +970,7 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                                         );
                                         if (waiting) return (
                                           <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                            {l.tinyLabel}
+                                            รอสินค้า {l.tinyLabel}
                                             <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
                                           </div>
                                         );
@@ -1304,7 +1304,7 @@ const Planning = ({ trucks, queue, onUpdate }) => {
                                         );
                                         if (waiting) return (
                                           <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                            {l.tinyLabel}
+                                            รอสินค้า {l.tinyLabel}
                                             <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
                                           </div>
                                         );
