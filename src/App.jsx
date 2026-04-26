@@ -781,7 +781,7 @@ const DriverScan = ({ queue, trucks, onScan }) => {
   const handleConfirm = () => {
     onScan({ ...pendingEntry, zone: selectedZone, status: "arrived", arrivedAt: TIME_NOW(), queueId: pendingEntry.id, pickupPrinted: false, summaryPrinted: false });
     const isWalkIn = pendingEntry.id.startsWith("WALK-");
-    setMsg({ t: isWalkIn ? "walk" : "ok", text: `✅ เช็คอินสำเร็จ! ${pendingEntry.plate}${selectedZone ? ` — ${selectedZone}` : ""}${isWalkIn ? " (walk-in)" : ""}` });
+    setMsg({ t: isWalkIn ? "walk" : "ok", text: `✅ เช็คอินสำเร็จ! ${pendingEntry.plate}${selectedZone ? ` — ${selectedZone}` : ""}` });
     setPlate(""); setPendingEntry(null); setSelectedZone(""); setStep("input");
   };
 
@@ -1050,7 +1050,7 @@ const QC = ({ trucks, onUpdate }) => {
         {sel && (
           <div style={{ marginTop: 10 }}>
             <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8 }}>
-              <b>{sel.product}</b> · {sel.qty} {sel.unit} → {sel.destination}
+              <b>{sel.product}</b>{sel.destination ? ` → ${sel.destination}` : ""}
             </div>
             {/* สรุป QC รายลาน */}
             <div style={{ display: "flex", gap: 6 }}>
@@ -1179,11 +1179,9 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
           {eligible.map(t => <option key={t.id} value={t.id}>{t.plate} · {t.driver} · {t.product}</option>)}
         </select>
         {sel && (
-          <div style={{ background: "#fff", borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 12, border: `1px solid ${curLane.border}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-            <span><b>สินค้า:</b> {sel.product}</span>
-            <span><b>จำนวน:</b> {sel.qty} {sel.unit}</span>
-            <span style={{ gridColumn: "1/-1" }}><b>ปลายทาง:</b> {sel.destination}</span>
-            <span style={{ gridColumn: "1/-1", color: "#8b5cf6" }}>🌡️ QC {curLane.shortLabel}: {sel.qcLanes?.[activeLane]?.temp}°C</span>
+          <div style={{ background: "#fff", borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 12, border: `1px solid ${curLane.border}`, display: "flex", flexDirection: "column", gap: 4 }}>
+            <span><b>กลุ่มลูกค้า:</b> {sel.customerGroup || sel.product}</span>
+            {sel.destination && <span><b>ปลายทาง:</b> {sel.destination}</span>}
           </div>
         )}
         <PhotoUploader label="📷 ถ่ายรูปหลังโหลดเสร็จ" value={form.photo} onChange={handlePhoto(activeLane)} />
