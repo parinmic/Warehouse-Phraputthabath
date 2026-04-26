@@ -1151,16 +1151,22 @@ const Picking = ({ trucks, queue, onUpdate }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียน","กลุ่มลูกค้า","สถานะ / เวลาเข้า","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
+                  {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","สถานะ","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
                     <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {allRows.map(({ key, plate, customerGroup, truck }) => (
+                {allRows.map(({ key, plate, customerGroup, entryTime, truck }) => (
                   <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
                     <td style={{ padding: "10px 12px", color: "#374151" }}>{customerGroup}</td>
+                    <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                      <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
+                      {truck?.arrivedAt
+                        ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
+                        : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
+                    </td>
                     <td style={{ padding: "10px 12px" }}>
                       {!truck
                         ? <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>รอเช็คอิน</span>
@@ -1194,7 +1200,6 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                                       })}
                                     </div>
                                 }
-                                {truck.arrivedAt && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>เข้า {truck.arrivedAt}</div>}
                               </div>
                             );
                           })()
@@ -1513,16 +1518,22 @@ const Planning = ({ trucks, queue, onUpdate }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียน","กลุ่มลูกค้า","สถานะ / เวลาเข้า","③ ใบเบิกสินค้า","⑥ ใบสรุปจ่าย","⑦ ใบ Invoice"].map(h => (
+                  {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","สถานะ","③ ใบเบิกสินค้า","⑥ ใบสรุปจ่าย","⑦ ใบ Invoice"].map(h => (
                     <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {allRows.map(({ key, plate, customerGroup, truck }) => (
+                {allRows.map(({ key, plate, customerGroup, entryTime, truck }) => (
                   <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
                     <td style={{ padding: "10px 12px", color: "#374151" }}>{customerGroup}</td>
+                    <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                      <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
+                      {truck?.arrivedAt
+                        ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
+                        : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
+                    </td>
                     <td style={{ padding: "10px 12px" }}>
                       {!truck
                         ? <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>รอเช็คอิน</span>
@@ -1556,7 +1567,6 @@ const Planning = ({ trucks, queue, onUpdate }) => {
                                       })}
                                     </div>
                                 }
-                                {truck.arrivedAt && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>เข้า {truck.arrivedAt}</div>}
                               </div>
                             );
                           })()
