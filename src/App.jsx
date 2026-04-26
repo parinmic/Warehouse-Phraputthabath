@@ -758,10 +758,8 @@ const DriverScan = ({ queue, trucks, onScan }) => {
       setMsg({ t: "warn", text: "⚠️ รถคันนี้เช็คอินครบทุก trip แล้ว" }); return;
     }
     const entry = nextEntry || { id: `WALK-${Date.now()}`, plate: p, driver: "", customerGroup: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", time: TIME_NOW(), entryTime: TIME_NOW(), loadTime: "", exitTime: "" };
-    const qZone = entry.zone || "";
-    const matched = LOADING_LANES.find(l => l.label === qZone || l.tinyLabel === qZone || qZone.includes(l.tinyLabel));
     setPendingEntry(entry);
-    setSelectedZone(matched ? matched.label : qZone);
+    setSelectedZone(entry.zone || "");
     setStep("confirm");
     setMsg(null);
   };
@@ -781,15 +779,14 @@ const DriverScan = ({ queue, trucks, onScan }) => {
         <div style={{ background: "#f9fafb", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
           <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>{pendingEntry.plate}</div>
           {pendingEntry.customerGroup && <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>กลุ่มลูกค้า: {pendingEntry.customerGroup}</div>}
-          {pendingEntry.entryTime && <div style={{ fontSize: 13, color: "#3b82f6", fontWeight: 600 }}>เวลานัด: {pendingEntry.entryTime}</div>}
         </div>
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>🏗️ เลือกโซน / ลานโหลด</label>
+          <label style={{ display: "block", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>📍 Zone</label>
           <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)}
             style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", background: "#fff" }}>
-            <option value="">— ไม่ระบุโซน —</option>
-            {LOADING_LANES.map(l => (
-              <option key={l.id} value={l.label}>{l.emoji} {l.label}</option>
+            <option value="">— ไม่ระบุ —</option>
+            {[...new Set(queue.map(q => q.zone).filter(Boolean))].map(z => (
+              <option key={z} value={z}>{z}</option>
             ))}
           </select>
         </div>
