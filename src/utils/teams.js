@@ -75,7 +75,7 @@ export const sendTeamsNotification = async (title, details, imageUrls = []) => {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(card),
+      body: JSON.stringify(card.attachments[0].content),
     });
 
     if (!response.ok) {
