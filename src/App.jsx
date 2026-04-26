@@ -157,16 +157,32 @@ const PrintModal = ({ truck, type, onClose }) => {
 };
 
 // ─── PHOTO UPLOADER ───────────────────────────────────────────────────────────
-const PhotoUploader = ({ label, value, onChange }) => (
-  <div style={{ marginBottom: 14 }}>
-    {label && <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>{label}</label>}
-    <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, border: `2px dashed ${value ? "#6ee7b7" : "#d1d5db"}`, borderRadius: 10, padding: 18, cursor: "pointer", background: value ? "#f0fdf4" : "#fafafa" }}>
-      <input type="file" accept="image/*" capture="environment" onChange={onChange} style={{ display: "none" }} />
-      {value ? <img src={value} alt="" style={{ width: "100%", borderRadius: 8, maxHeight: 160, objectFit: "cover" }} />
-        : <><Icon name="camera" size={28} /><span style={{ color: "#9ca3af", fontSize: 13 }}>แตะเพื่อถ่าย / อัปโหลดรูป</span></>}
-    </label>
-  </div>
-);
+const PhotoUploader = ({ label, value, onChange }) => {
+  const photos = Array.isArray(value) ? value : (value ? [value] : []);
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {label && <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>{label}</label>}
+      <label style={{ display: "block", border: `2px dashed ${photos.length > 0 ? "#6ee7b7" : "#d1d5db"}`, borderRadius: 10, padding: photos.length > 0 ? 10 : 18, cursor: "pointer", background: photos.length > 0 ? "#f0fdf4" : "#fafafa" }}>
+        <input type="file" accept="image/*" multiple onChange={onChange} style={{ display: "none" }} />
+        {photos.length > 0
+          ? <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {photos.map((src, i) => <img key={i} src={src} alt="" style={{ width: "100%", aspectRatio: "1", borderRadius: 6, objectFit: "cover" }} />)}
+              </div>
+              <div style={{ textAlign: "center", marginTop: 8, fontSize: 11, color: "#10b981", fontWeight: 700 }}>
+                {photos.length} รูป · แตะเพื่อเลือกใหม่
+              </div>
+            </div>
+          : <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <Icon name="camera" size={28} />
+              <span style={{ color: "#9ca3af", fontSize: 13 }}>ถ่ายรูป / เลือกจาก Gallery</span>
+              <span style={{ color: "#d1d5db", fontSize: 11 }}>สูงสุด 5 รูปต่อครั้ง</span>
+            </div>
+        }
+      </label>
+    </div>
+  );
+};
 
 // ─── TRUCK CARD ───────────────────────────────────────────────────────────────
 const TruckCard = ({ t, children, highlight }) => (
@@ -1026,8 +1042,8 @@ const QC = ({ trucks, onUpdate }) => {
   const thisLaneQCd = sel?.qcLanes?.[lane]?.done;
 
   const handlePhoto = e => {
-    const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader(); r.onload = ev => setPhoto(ev.target.result); r.readAsDataURL(f);
+    const files = Array.from(e.target.files).slice(0, 5); if (!files.length) return;
+    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(setPhoto);
   };
 
   const handleSubmit = () => {
@@ -1142,8 +1158,8 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
   const sel = trucks.find(t => t.id === form.selId) || null;
 
   const handlePhoto = lId => e => {
-    const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader(); r.onload = ev => setF(lId, { photo: ev.target.result }); r.readAsDataURL(f);
+    const files = Array.from(e.target.files).slice(0, 5); if (!files.length) return;
+    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(photos => setF(lId, { photo: photos }));
   };
 
   const handleWaiting = () => {
