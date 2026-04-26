@@ -286,15 +286,23 @@ const Dashboard = ({ trucks, queue, onReset }) => {
   ];
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const walkIns = trucks.filter(t => !queue.find(q => q.id === t.queueId));
   const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
   const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
   const getRemMins = (row) => {
     const dt = parseExitDatetime(row.date, row.exitTime);
     return dt ? Math.round((dt - Date.now()) / 60000) : Infinity;
   };
+  const usedDash = new Set();
+  const matchTruckDash = q => {
+    let t = trucks.find(t => t.queueId === q.id && !usedDash.has(t.id));
+    if (!t) t = trucks.find(t => !t.queueId && plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "" && !usedDash.has(t.id));
+    if (t) usedDash.add(t.id);
+    return t;
+  };
+  const dashQueueRows = queue.map(q => ({ key: q.id, date: q.date || "", plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: matchTruckDash(q) }));
+  const walkIns = trucks.filter(t => !usedDash.has(t.id));
   const allRows = [
-    ...queue.map(q => ({ key: q.id, date: q.date || "", plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => t.queueId === q.id) })),
+    ...dashQueueRows,
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
     const rank = row => {
@@ -842,9 +850,17 @@ const Picking = ({ trucks, queue, onUpdate }) => {
 
   // รวม queue + walk-in (รถที่เข้าแล้วแต่ยังไม่มีในคิว)
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const walkIns = trucks.filter(t => !queue.find(q => q.id === t.queueId));
+  const usedPick = new Set();
+  const matchTruckPick = q => {
+    let t = trucks.find(t => t.queueId === q.id && !usedPick.has(t.id));
+    if (!t) t = trucks.find(t => !t.queueId && plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "" && !usedPick.has(t.id));
+    if (t) usedPick.add(t.id);
+    return t;
+  };
+  const pickQueueRows = queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, truck: matchTruckPick(q) }));
+  const walkIns = trucks.filter(t => !usedPick.has(t.id));
   const allRows = [
-    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, truck: trucks.find(t => t.queueId === q.id) })),
+    ...pickQueueRows,
     ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: "", truck: t })),
   ].sort((a, b) => {
     const rank = t => {
@@ -1177,9 +1193,17 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
 // ── 7. PLANNING ───────────────────────────────────────────────────────────────
 const Planning = ({ trucks, queue, onUpdate }) => {
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const walkIns = trucks.filter(t => !queue.find(q => q.id === t.queueId));
+  const usedPlan = new Set();
+  const matchTruckPlan = q => {
+    let t = trucks.find(t => t.queueId === q.id && !usedPlan.has(t.id));
+    if (!t) t = trucks.find(t => !t.queueId && plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "" && !usedPlan.has(t.id));
+    if (t) usedPlan.add(t.id);
+    return t;
+  };
+  const planQueueRows = queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, truck: matchTruckPlan(q) }));
+  const walkIns = trucks.filter(t => !usedPlan.has(t.id));
   const allRows = [
-    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, truck: trucks.find(t => t.queueId === q.id) })),
+    ...planQueueRows,
     ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", truck: t })),
   ].sort((a, b) => {
     const rank = t => {
