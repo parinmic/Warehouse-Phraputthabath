@@ -397,7 +397,12 @@ const Dashboard = ({ trucks, queue, onReset }) => {
                                           <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
                                         </div>
                                       );
-                                      if (waiting) return <span key={l.id} style={{ fontSize: 11, color: "#d97706", fontWeight: 700, whiteSpace: "nowrap" }}>⏳ รอสินค้า {l.tinyLabel}</span>;
+                                      if (waiting) return (
+                                          <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                            {l.tinyLabel}
+                                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
+                                          </div>
+                                        );
                                       if (qcDone) return <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>;
                                       return null;
                                     })}
@@ -963,7 +968,12 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                                             <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
                                           </div>
                                         );
-                                        if (waiting) return <span key={l.id} style={{ fontSize: 11, color: "#d97706", fontWeight: 700, whiteSpace: "nowrap" }}>⏳ รอสินค้า {l.tinyLabel}</span>;
+                                        if (waiting) return (
+                                          <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                            {l.tinyLabel}
+                                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
+                                          </div>
+                                        );
                                         if (qcDone) return (
                                           <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>
                                         );
@@ -1292,7 +1302,12 @@ const Planning = ({ trucks, queue, onUpdate }) => {
                                             <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
                                           </div>
                                         );
-                                        if (waiting) return <span key={l.id} style={{ fontSize: 11, color: "#d97706", fontWeight: 700, whiteSpace: "nowrap" }}>⏳ รอสินค้า {l.tinyLabel}</span>;
+                                        if (waiting) return (
+                                          <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                            {l.tinyLabel}
+                                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
+                                          </div>
+                                        );
                                         if (qcDone) return (
                                           <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>
                                         );
