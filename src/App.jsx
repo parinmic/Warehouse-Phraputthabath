@@ -1516,18 +1516,22 @@ export default function App() {
             })}
           </select>
           {tab === "dashboard" && (
-            <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+            <div style={{ display: "flex", gap: 2, marginLeft: 10 }}>
               {[
-                { id: "main",       label: "Main"    },
-                { id: "lane_parts", label: "ชิ้นส่วน" },
-                { id: "lane_head",  label: "หัว/ใน"  },
-                { id: "lane_pork",  label: "หมูซีก"  },
-              ].map(l => (
-                <button key={l.id} onClick={() => setDashLane(l.id)}
-                  style={{ background: dashLane === l.id ? "#f9fafb" : "#374151", color: dashLane === l.id ? "#111" : "#d1d5db", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  {l.label}
-                </button>
-              ))}
+                { id: "main",       label: "Main",    icon: "chart"    },
+                { id: "lane_parts", label: "ชิ้นส่วน", icon: "pig_cuts" },
+                { id: "lane_head",  label: "หัว/ใน",  icon: "pig_head" },
+                { id: "lane_pork",  label: "หมูซีก",  icon: "pig_side" },
+              ].map(l => {
+                const active = dashLane === l.id;
+                return (
+                  <button key={l.id} onClick={() => setDashLane(l.id)}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: active ? "#f9fafb" : "transparent", color: active ? "#111" : "#9ca3af", border: "none", borderRadius: 10, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", minWidth: 44, lineHeight: 1.2 }}>
+                    <Icon name={l.icon} size={16} />
+                    {l.label}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
