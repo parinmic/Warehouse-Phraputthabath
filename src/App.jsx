@@ -331,6 +331,11 @@ const exportArchiveExcel = async (dateStr) => {
 const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head: "ลานหัว/เครื่องใน", lane_pork: "ลานหมูซีก" };
 
 const Dashboard = ({ trucks, queue, onReset, lane }) => {
+  const [clock, setClock] = useState(() => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
+    return () => clearInterval(id);
+  }, []);
   const cnt = (s) => trucks.filter(t => t.status === s).length;
   const stats = [
     { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.queueId === q.id)).length, color: "#3b82f6", icon: "list"    },
@@ -388,7 +393,10 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
-            <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontSize: 18, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
+              <span style={{ fontSize: 18, fontWeight: 700, color: "#3b82f6", fontVariantNumeric: "tabular-nums" }}>{clock}</span>
+            </div>
           </div>
           <button onClick={onReset}
             className="desktop-only"
@@ -1575,7 +1583,7 @@ export default function App() {
           <span style={{ fontSize: 22 }}>🏭</span>
           <div>
             <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>Factory Loading System</div>
-            <div style={{ fontSize: 10, color: "#9ca3af" }}>{time} · {TODAY}</div>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>{TODAY}</div>
           </div>
           <select value={tab} onChange={e => { setTab(e.target.value); setDashLane("main"); }}
             style={{ marginLeft: 10, background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>
