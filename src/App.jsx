@@ -1045,7 +1045,7 @@ const QC = ({ trucks, onUpdate }) => {
         <select value={selId} onChange={e => { setSelId(e.target.value); setTemp(""); setPhoto(null); }}
           style={{ width: "100%", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "11px 12px", fontSize: 15, outline: "none", boxSizing: "border-box" }}>
           <option value="">-- เลือกทะเบียนรถที่รอ QC --</option>
-          {eligible.map(t => <option key={t.id} value={t.id}>{t.plate} · {t.driver} · {t.product}</option>)}
+          {eligible.map(t => <option key={t.id} value={t.id}>{t.loadLanes?.[activeLane]?.waiting ? "⏳ " : ""}{t.plate} · {t.customerGroup || t.product}</option>)}
         </select>
         {sel && (
           <div style={{ marginTop: 10 }}>
@@ -1100,9 +1100,9 @@ const QC = ({ trucks, onUpdate }) => {
 const LoadingYard = ({ trucks, onUpdate, laneId }) => {
   const [activeLane, setActiveLane] = useState(laneId ?? "lane_parts");
   const [forms, setForms] = useState({
-    lane_parts: { selId: "", photo: null, flash: false },
-    lane_head:  { selId: "", photo: null, flash: false },
-    lane_pork:  { selId: "", photo: null, flash: false },
+    lane_parts: { selId: "", photo: null, note: "", flash: false },
+    lane_head:  { selId: "", photo: null, note: "", flash: false },
+    lane_pork:  { selId: "", photo: null, note: "", flash: false },
   });
   const setF = (lId, upd) => setForms(p => ({ ...p, [lId]: { ...p[lId], ...upd } }));
   const curLane = LOADING_LANES.find(l => l.id === activeLane);
@@ -1122,12 +1122,20 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
     const r = new FileReader(); r.onload = ev => setF(lId, { photo: ev.target.result }); r.readAsDataURL(f);
   };
 
+  const handleWaiting = () => {
+    if (!sel) return;
+    if (!window.confirm(`ยืนยัน: ${sel.plate} — รอเติมสินค้า?`)) return;
+    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { ...(sel.loadLanes?.[activeLane] || {}), waiting: true, note: form.note } };
+    onUpdate(sel.id, { loadLanes });
+    setF(activeLane, { selId: "", photo: null, note: "" });
+  };
+
   const handleLoad = () => {
     if (!sel) return;
-    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { done: true, photo: form.photo, doneAt: TIME_NOW() } };
-    // รถอยู่ "picking" ต่อ — จะ summary_printed เมื่อ Picking พิมพ์ใบสรุป
+    if (!window.confirm(`ยืนยัน: บันทึกโหลดเสร็จ ${sel.plate}?`)) return;
+    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { done: true, photo: form.photo, note: form.note, doneAt: TIME_NOW() } };
     onUpdate(sel.id, { loadLanes });
-    setF(activeLane, { selId: "", photo: null, flash: true });
+    setF(activeLane, { selId: "", photo: null, note: "", flash: true });
     setTimeout(() => setF(activeLane, { flash: false }), 2500);
   };
 
@@ -1176,7 +1184,7 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
         <select value={form.selId} onChange={e => setF(activeLane, { selId: e.target.value })}
           style={{ width: "100%", border: `1.5px solid ${curLane.border}`, borderRadius: 8, padding: "11px 12px", fontSize: 15, outline: "none", boxSizing: "border-box", marginBottom: 12, background: "#fff" }}>
           <option value="">-- เลือกทะเบียนรถ --</option>
-          {eligible.map(t => <option key={t.id} value={t.id}>{t.plate} · {t.driver} · {t.product}</option>)}
+          {eligible.map(t => <option key={t.id} value={t.id}>{t.loadLanes?.[activeLane]?.waiting ? "⏳ " : ""}{t.plate} · {t.customerGroup || t.product}</option>)}
         </select>
         {sel && (
           <div style={{ background: "#fff", borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 12, border: `1px solid ${curLane.border}`, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1184,10 +1192,21 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
             {sel.destination && <span><b>ปลายทาง:</b> {sel.destination}</span>}
           </div>
         )}
+        <textarea
+          placeholder="Note (ถ้ามี)"
+          value={form.note}
+          onChange={e => setF(activeLane, { note: e.target.value })}
+          rows={2}
+          style={{ width: "100%", border: `1.5px solid ${curLane.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 12, resize: "vertical", fontFamily: "inherit" }}
+        />
         <PhotoUploader label="📷 ถ่ายรูปหลังโหลดเสร็จ" value={form.photo} onChange={handlePhoto(activeLane)} />
+        <button onClick={handleWaiting} disabled={!sel}
+          style={{ width: "100%", background: sel ? "#f59e0b" : "#e5e7eb", color: sel ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel ? "pointer" : "default", marginBottom: 8 }}>
+          ⏳ รอเติมสินค้า
+        </button>
         <button onClick={handleLoad} disabled={!sel}
           style={{ width: "100%", background: sel ? curLane.color : "#e5e7eb", color: sel ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel ? "pointer" : "default" }}>
-          ✅ บันทึกโหลดเสร็จ → {curLane.label}
+          ✅ บันทึกโหลดเสร็จ
         </button>
       </div>
 
