@@ -393,10 +393,7 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <span style={{ fontSize: 18, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
-              <span style={{ fontSize: 18, fontWeight: 700, color: "#3b82f6", fontVariantNumeric: "tabular-nums" }}>{clock}</span>
-            </div>
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY} <span style={{ color: "#3b82f6", fontVariantNumeric: "tabular-nums" }}>{clock}</span></span>
           </div>
           <button onClick={onReset}
             className="desktop-only"
