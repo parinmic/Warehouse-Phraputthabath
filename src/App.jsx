@@ -1573,7 +1573,7 @@ export default function App() {
     { id: "picking",   label: "③⑥ Picking", icon: "clipboard" },
     { id: "qc",            label: "④ QC",       icon: "temp"      },
     { id: "loading_parts", label: "⑤ ชิ้นส่วน", icon: "pig_cuts"  },
-    { id: "loading_head",  label: "⑤ หัว/ใน",  icon: "pig_head"  },
+    { id: "loading_head",  label: "⑤ หัว/เครื่องใน",  icon: "pig_head"  },
     { id: "loading_pork",  label: "⑤ หมูซีก",  icon: "pig_side"  },
     { id: "planning",      label: "⑦ Ordering", icon: "plan"      },
     { id: "download",      label: "จบการทำงาน", icon: "invoice"   },
