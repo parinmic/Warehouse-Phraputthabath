@@ -41,6 +41,29 @@ const getStep = (status) => STATUS_META[status]?.step ?? 0;
 const DATE_STR = () => new Date().toISOString().split("T")[0];
 const safePlate = p => String(p).replace(/[^a-zA-Z0-9]/g, "") || "unknown";
 
+const compressImage = file => new Promise(resolve => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = ev => {
+    const img = new Image();
+    img.src = ev.target.result;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      const MAX_SIZE = 1200;
+      if (width > height) {
+        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+      } else {
+        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+      }
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+  };
+});
+
 async function uploadPhotos(folder, plate, photos) {
   if (!photos || !photos.length) return [];
   const ts = Date.now();
@@ -1208,7 +1231,7 @@ const QC = ({ trucks, onUpdate }) => {
 
   const handlePhoto = e => {
     const files = Array.from(e.target.files).slice(0, 5); if (!files.length) return;
-    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(newPhotos => {
+    Promise.all(files.map(compressImage)).then(newPhotos => {
       setPhoto(prev => {
         const p = Array.isArray(prev) ? prev : (prev ? [prev] : []);
         return [...p, ...newPhotos].slice(0, 5);
@@ -1337,7 +1360,7 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
 
   const handlePhoto = lId => e => {
     const files = Array.from(e.target.files).slice(0, 5); if (!files.length) return;
-    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(newPhotos => {
+    Promise.all(files.map(compressImage)).then(newPhotos => {
       setForms(prev => {
         const f = prev[lId];
         const curPhotos = Array.isArray(f.photo) ? f.photo : (f.photo ? [f.photo] : []);
