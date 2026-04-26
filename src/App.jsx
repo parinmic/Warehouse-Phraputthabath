@@ -642,6 +642,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
 
   const [addingManual, setAddingManual] = useState(false);
   const [manualData, setManualData] = useState({ date: "", plate: "", customerGroup: "", zone: "", entryTime: "", exitTime: "" });
+  const [searchQuery, setSearchQuery] = useState("");
 
   const startEdit = (q) => { setEditId(q.id); setEditData({ plate: q.plate, customerGroup: q.customerGroup, zone: q.zone || "", entryTime: q.entryTime, exitTime: q.exitTime }); };
   const cancelEdit = () => { setEditId(null); setEditData({}); };
@@ -815,10 +816,16 @@ const LGUpload = ({ queue, onSetQueue }) => {
       )}
 
       {/* Current queue list */}
-      {queue.length > 0 && (
+      {queue.length > 0 && (() => {
+        const filteredQueue = queue.filter(q => q.plate.includes(searchQuery));
+        return (
         <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
-            คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{queue.length}</span>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>
+              คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{filteredQueue.length}</span>
+            </div>
+            <input type="text" placeholder="🔍 ค้นหาทะเบียนรถ..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 12px", fontSize: 12, outline: "none", width: 160 }} />
           </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -830,7 +837,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
                 </tr>
               </thead>
               <tbody>
-                {queue.map(q => {
+                {filteredQueue.map(q => {
                   const isEditing = editId === q.id;
                   return (
                     <tr key={q.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : undefined }}>
@@ -901,7 +908,8 @@ const LGUpload = ({ queue, onSetQueue }) => {
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
@@ -1103,6 +1111,9 @@ const Picking = ({ trucks, queue, onUpdate }) => {
     return rank(a.truck) - rank(b.truck);
   });
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const filteredRows = allRows.filter(r => r.plate.includes(searchQuery));
+
   const canStep3 = t => t?.status === "arrived";
   const doneStep3 = t => t && ["picking","summary_printed","invoiced"].includes(t.status);
   const canStep6 = t =>
@@ -1141,10 +1152,14 @@ const Picking = ({ trucks, queue, onUpdate }) => {
       <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ขั้นตอนที่ 3 (ใบเบิกสินค้า) + ขั้นตอนที่ 6 (ใบสรุปจ่าย)</p>
 
       <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.07)" }}>
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
-          📋 คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>
+            📋 คิวรถวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{filteredRows.length}</span>
+          </div>
+          <input type="text" placeholder="🔍 ค้นหาทะเบียนรถ..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 12px", fontSize: 12, outline: "none", width: 160 }} />
         </div>
-        {allRows.length === 0
+        {filteredRows.length === 0
           ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีคิวรถ</div>
           : (
           <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 190px)" }}>
@@ -1157,7 +1172,7 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                 </tr>
               </thead>
               <tbody>
-                {allRows.map(({ key, plate, customerGroup, entryTime, truck }) => (
+                {filteredRows.map(({ key, plate, customerGroup, entryTime, truck }) => (
                   <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
                     <td style={{ padding: "10px 12px", color: "#374151" }}>{customerGroup}</td>
