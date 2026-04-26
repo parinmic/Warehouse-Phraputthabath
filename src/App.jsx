@@ -1049,7 +1049,7 @@ const QC = ({ trucks, onUpdate }) => {
         <select value={selId} onChange={e => { setSelId(e.target.value); setTemp(""); setPhoto(null); }}
           style={{ width: "100%", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "11px 12px", fontSize: 15, outline: "none", boxSizing: "border-box" }}>
           <option value="">-- เลือกทะเบียนรถที่รอ QC --</option>
-          {eligible.map(t => <option key={t.id} value={t.id}>{t.loadLanes?.[activeLane]?.waiting ? "⏳ " : ""}{t.plate} · {t.customerGroup || t.product}</option>)}
+          {eligible.map(t => <option key={t.id} value={t.id}>{t.loadLanes?.[lane]?.waiting ? "⏳ " : ""}{t.plate} · {t.customerGroup || t.product}</option>)}
         </select>
         {sel && (
           <div style={{ marginTop: 10 }}>
