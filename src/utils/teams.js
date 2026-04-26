@@ -38,13 +38,24 @@ export const sendTeamsNotification = async (title, details, imageUrls = []) => {
         card.attachments[0].content.body.push({
           type: "Image",
           url: images[0],
-          size: "Auto"
+          size: "Auto",
+          selectAction: {
+            type: "Action.OpenUrl",
+            url: images[0]
+          }
         });
       } else {
         card.attachments[0].content.body.push({
           type: "ImageSet",
           imageSize: "Medium",
-          images: images.map(url => ({ type: "Image", url }))
+          images: images.map(url => ({ 
+            type: "Image", 
+            url,
+            selectAction: {
+              type: "Action.OpenUrl",
+              url: url
+            }
+          }))
         });
       }
     }
