@@ -1587,16 +1587,14 @@ export default function App() {
           {tab === "dashboard" && (
             <div style={{ display: "flex", gap: 2, marginLeft: 10 }}>
               {[
-                { id: "main",       label: "Main",    icon: "chart"    },
-                { id: "lane_parts", label: "ชิ้นส่วน", icon: "pig_cuts" },
-                { id: "lane_head",  label: "หัว/ใน",  icon: "pig_head" },
-                { id: "lane_pork",  label: "หมูซีก",  icon: "pig_side" },
+                { id: "main",       label: "Main",    emoji: "📊" },
+                ...LOADING_LANES.map(l => ({ id: l.id, label: l.tinyLabel.replace("/เครื่องใน",""), emoji: l.emoji })),
               ].map(l => {
                 const active = dashLane === l.id;
                 return (
                   <button key={l.id} onClick={() => setDashLane(l.id)}
                     style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: active ? "#f9fafb" : "transparent", color: active ? "#111" : "#9ca3af", border: "none", borderRadius: 10, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", minWidth: 44, lineHeight: 1.2 }}>
-                    <Icon name={l.icon} size={16} />
+                    <span style={{ fontSize: 18 }}>{l.emoji}</span>
                     {l.label}
                   </button>
                 );
