@@ -39,7 +39,7 @@ const TIME_NOW = () => new Date().toLocaleTimeString("th-TH", { hour: "2-digit",
 const getStep = (status) => STATUS_META[status]?.step ?? 0;
 
 const DATE_STR = () => new Date().toISOString().split("T")[0];
-const safePlate = p => String(p).replace(/[^a-zA-Z0-9ก-๙]/g, "_");
+const safePlate = p => String(p).replace(/[^a-zA-Z0-9]/g, "") || "unknown";
 
 async function uploadPhotos(folder, plate, photos) {
   if (!photos || !photos.length) return [];
