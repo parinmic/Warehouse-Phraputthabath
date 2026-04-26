@@ -1208,7 +1208,12 @@ const QC = ({ trucks, onUpdate }) => {
 
   const handlePhoto = e => {
     const files = Array.from(e.target.files).slice(0, 5); if (!files.length) return;
-    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(setPhoto);
+    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(newPhotos => {
+      setPhoto(prev => {
+        const p = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+        return [...p, ...newPhotos].slice(0, 5);
+      });
+    });
   };
 
   const handleSubmit = async () => {
@@ -1332,7 +1337,13 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
 
   const handlePhoto = lId => e => {
     const files = Array.from(e.target.files).slice(0, 5); if (!files.length) return;
-    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(photos => setF(lId, { photo: photos }));
+    Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(f); }))).then(newPhotos => {
+      setForms(prev => {
+        const f = prev[lId];
+        const curPhotos = Array.isArray(f.photo) ? f.photo : (f.photo ? [f.photo] : []);
+        return { ...prev, [lId]: { ...f, photo: [...curPhotos, ...newPhotos].slice(0, 5) } };
+      });
+    });
   };
 
   const handleWaiting = () => {
