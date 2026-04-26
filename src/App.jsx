@@ -366,14 +366,14 @@ const TimeBar = ({ exitTime, date, done, invoicedAt }) => {
   const fmtMins = m => { const a = Math.abs(m); return `${Math.floor(a/60)}:${String(a%60).padStart(2,"0")}`; };
   const label = remaining < 0 ? `เกิน ${fmtMins(remaining)} ชม.` : `เหลือ ${fmtMins(remaining)} ชม.`;
   return (
-    <div style={{ minWidth: 110 }}>
+    <div style={{ minWidth: 160 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: remaining <= 0 ? "#ef4444" : "#374151", whiteSpace: "nowrap" }}>{exitTime}</span>
-        <div style={{ flex: 1, background: "#e5e7eb", borderRadius: 4, height: 6, overflow: "hidden", minWidth: 40 }}>
-          <div style={{ background: color, height: "100%", width: `${pct * 100}%`, borderRadius: 4 }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: remaining <= 0 ? "#ef4444" : "#374151", whiteSpace: "nowrap" }}>{exitTime}</span>
+        <div style={{ flex: 1, background: "#e5e7eb", borderRadius: 6, height: 10, overflow: "hidden", minWidth: 60 }}>
+          <div style={{ background: color, height: "100%", width: `${pct * 100}%`, borderRadius: 6 }} />
         </div>
       </div>
-      <div style={{ fontSize: 10, color, marginTop: 2, whiteSpace: "nowrap" }}>{label}</div>
+      <div style={{ fontSize: 11, color, marginTop: 4, whiteSpace: "nowrap", fontWeight: 600 }}>{label}</div>
     </div>
   );
 };
@@ -503,12 +503,12 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
           </div>
           {allRows.length === 0
             ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีรถเข้าโรงงาน</div>
-            : <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 220px)" }}>
+            : <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 170px)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน","สถานะ","ใบเบิกสินค้า","ใบสรุปจ่าย","ใบ Invoice"].map(h => (
-                        <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
+                      {[{l:"ทะเบียน",w:60},{l:"กลุ่มลูกค้า",w:100},{l:"เวลาเข้าโรงงาน",w:90},{l:"เวลาออกจากโรงงาน",w:200},{l:"สถานะ",w:"auto"},{l:"ใบเบิกสินค้า",w:60},{l:"ใบสรุปจ่าย",w:60},{l:"ใบ Invoice",w:60}].map(h => (
+                        <th key={h.l} style={{ width: h.w, padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h.l}</th>
                       ))}
                     </tr>
                   </thead>
@@ -1663,7 +1663,7 @@ export default function App() {
   const [tab,      setTab]      = useState("dashboard");
   const [dashLane, setDashLane] = useState("main");
   const [time,     setTime]     = useState(TIME_NOW());
-  const [showQR,   setShowQR]   = useState(false);
+  const [loading,  setLoading]  = useState(true);
 
   // Driver-only mode via URL parameter ?mode=driver
   const isDriverMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "driver";
@@ -1767,6 +1767,7 @@ export default function App() {
   };
 
   const tabs = [
+    { id: "qr",            label: "📱 QR คนขับ", icon: "scan"      },
     { id: "dashboard", label: "Dashboard", icon: "chart"     },
     { id: "lg",        label: "① LG",      icon: "upload"    },
     { id: "driver",    label: "② คนขับ",   icon: "scan"      },
@@ -1830,33 +1831,12 @@ export default function App() {
             </div>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => setShowQR(true)}
-            style={{ background: "#374151", color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-            📱 QR คนขับ
-          </button>
-          <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>
-            🚛 {trucks.length} คัน
-          </div>
-        </div>
       </div>
-      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: "20px 14px 100px" }}>
+      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: tab === "dashboard" ? "20px 14px 20px" : "20px 14px 100px" }}>
         {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} />}
-        {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
-        {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} skipGeofence />}
-        {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
-        {tab === "qc"        && <QC trucks={trucks} onUpdate={handleUpdate} />}
-        {tab === "loading_parts" && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_parts" />}
-        {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
-        {tab === "loading_pork"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_pork" />}
-        {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
-        {tab === "download"  && <Download onReset={handleReset} />}
-      </div>
-
-      {/* QR Code Modal */}
-      {showQR && (
-        <Modal title="📱 QR Code สำหรับคนขับ" onClose={() => setShowQR(false)}>
-          <div style={{ textAlign: "center" }}>
+        {tab === "qr"        && (
+          <div style={{ textAlign: "center", maxWidth: 400, margin: "0 auto", background: "#fff", padding: 30, borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
+            <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900 }}>📱 QR Code สำหรับคนขับ</h2>
             <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
               คนขับสแกน QR Code นี้เพื่อเช็คอินเข้าโรงงาน<br />
               <span style={{ fontSize: 12, color: "#9ca3af" }}>ใช้งานได้เฉพาะเมื่ออยู่ภายในรัศมี {GEOFENCE_RADIUS_M} เมตร จากโรงงาน</span>
@@ -1876,8 +1856,19 @@ export default function App() {
               </button>
             </div>
           </div>
-        </Modal>
-      )}
+        )}
+        {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
+        {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} skipGeofence />}
+        {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+        {tab === "qc"        && <QC trucks={trucks} onUpdate={handleUpdate} />}
+        {tab === "loading_parts" && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_parts" />}
+        {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
+        {tab === "loading_pork"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_pork" />}
+        {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+        {tab === "download"  && <Download onReset={handleReset} />}
+      </div>
+
+      {/* QR Code Modal */}
     </div>
   );
 }
