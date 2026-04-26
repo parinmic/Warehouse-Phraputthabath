@@ -300,8 +300,8 @@ const Dashboard = ({ trucks, queue, onReset }) => {
     const rank = row => {
       if (!row.truck) return 2;
       if (["invoiced","summary_printed"].includes(row.truck.status)) return 3;
-      if (row.truck.status === "picking") return 0;
-      return 1; // arrived
+      const anyQC = LOADING_LANES.some(l => row.truck.qcLanes?.[l.id]?.done);
+      return anyQC ? 0 : 1; // กำลังโหลด : รอเข้าโหลด
     };
     const ra = rank(a), rb = rank(b);
     if (ra !== rb) return ra - rb;
