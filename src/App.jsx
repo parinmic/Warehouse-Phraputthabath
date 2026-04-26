@@ -225,7 +225,8 @@ const TimeBar = ({ exitTime, date, done, invoicedAt }) => {
   }
 
   const pct = Math.min(Math.max(remaining / totalWindow, 0), 1);
-  const label = remaining < 0 ? `เกิน ${Math.abs(remaining)} น.` : `เหลือ ${remaining} น.`;
+  const fmtMins = m => { const a = Math.abs(m); return `${Math.floor(a/60)}:${String(a%60).padStart(2,"0")}`; };
+  const label = remaining < 0 ? `เกิน ${fmtMins(remaining)} ชม.` : `เหลือ ${fmtMins(remaining)} ชม.`;
   return (
     <div style={{ minWidth: 110 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
