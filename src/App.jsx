@@ -475,7 +475,7 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
   return (
     <div>
       {/* Sticky header */}
-      <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: 12, paddingTop: 2 }}>
+      <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: 8, paddingTop: 0 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
@@ -486,7 +486,7 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
 
       <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "start" }}>
         {/* Left: sticky stat cards */}
-        <div style={{ position: "sticky", top: 120, alignSelf: "start", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ position: "sticky", top: 100, alignSelf: "start", display: "flex", flexDirection: "column", gap: 10 }}>
           {stats.map(s => (
             <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderLeft: `4px solid ${s.color}` }}>
               <div style={{ color: s.color, marginBottom: 3 }}><Icon name={s.icon} size={16} /></div>
@@ -1832,7 +1832,7 @@ export default function App() {
           )}
         </div>
       </div>
-      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: tab === "dashboard" ? "20px 14px 20px" : "20px 14px 100px" }}>
+      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: tab === "dashboard" ? "8px 14px 14px" : "20px 14px 100px" }}>
         {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} />}
         {tab === "qr"        && (
           <div style={{ textAlign: "center", maxWidth: 400, margin: "0 auto", background: "#fff", padding: 30, borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
