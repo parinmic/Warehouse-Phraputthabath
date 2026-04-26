@@ -276,7 +276,9 @@ const exportArchiveExcel = async (dateStr) => {
   XLSX.writeFile(wb, `คิวรถ_${dateStr}.xlsx`);
 };
 
-const Dashboard = ({ trucks, queue, onReset }) => {
+const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head: "ลานหัว/เครื่องใน", lane_pork: "ลานหมูซีก" };
+
+const Dashboard = ({ trucks, queue, onReset, lane }) => {
   const cnt = (s) => trucks.filter(t => t.status === s).length;
   const stats = [
     { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.queueId === q.id)).length, color: "#3b82f6", icon: "list"    },
@@ -306,14 +308,22 @@ const Dashboard = ({ trucks, queue, onReset }) => {
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
     const rank = row => {
+      if (lane) {
+        if (!row.truck) return 2;
+        if (row.truck.loadLanes?.[lane]?.done) return 3;       // โหลดลานนี้เสร็จแล้ว → ล่าง
+        const qcDone = row.truck.qcLanes?.[lane]?.done;
+        const waiting = row.truck.loadLanes?.[lane]?.waiting;
+        if (qcDone || waiting) return 0;                        // กำลังโหลด/รอสินค้า → บน
+        return 1;                                               // ยังไม่ QC ลานนี้
+      }
       if (!row.truck) return 2;
       if (["invoiced","summary_printed"].includes(row.truck.status)) return 3;
       const anyQC = LOADING_LANES.some(l => row.truck.qcLanes?.[l.id]?.done);
-      return anyQC ? 0 : 1; // กำลังโหลด : รอเข้าโหลด
+      return anyQC ? 0 : 1;
     };
     const ra = rank(a), rb = rank(b);
     if (ra !== rb) return ra - rb;
-    return getRemMins(a) - getRemMins(b); // เกินมากสุด (ติดลบมากสุด) ขึ้นก่อน
+    return getRemMins(a) - getRemMins(b);
   });
 
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
@@ -325,7 +335,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
       <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: 12, paddingTop: 2 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 Main Dashboard</h2>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
             <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY}</span>
           </div>
           <button onClick={onReset}
@@ -1406,10 +1416,11 @@ const fetchQueue  = async () => { const { data } = await supabase.from("wh_queue
 const fetchTrucks = async () => { const { data } = await supabase.from("wh_trucks").select("*"); return (data || []).map(r => r.data); };
 
 export default function App() {
-  const [queue,  setQueue]  = useState([]);
-  const [trucks, setTrucks] = useState([]);
-  const [tab,    setTab]    = useState("dashboard");
-  const [time,   setTime]   = useState(TIME_NOW());
+  const [queue,    setQueue]    = useState([]);
+  const [trucks,   setTrucks]   = useState([]);
+  const [tab,      setTab]      = useState("dashboard");
+  const [dashLane, setDashLane] = useState("main");
+  const [time,     setTime]     = useState(TIME_NOW());
 
   useEffect(() => { const id = setInterval(() => setTime(TIME_NOW()), 15000); return () => clearInterval(id); }, []);
 
@@ -1497,20 +1508,35 @@ export default function App() {
             <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>Factory Loading System</div>
             <div style={{ fontSize: 10, color: "#9ca3af" }}>{time} · {TODAY}</div>
           </div>
-          <select value={tab} onChange={e => setTab(e.target.value)}
+          <select value={tab} onChange={e => { setTab(e.target.value); setDashLane("main"); }}
             style={{ marginLeft: 10, background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>
             {tabs.map(t => {
               const n = badge[t.id] || 0;
               return <option key={t.id} value={t.id}>{t.label}{n > 0 ? ` · ${n}` : ""}</option>;
             })}
           </select>
+          {tab === "dashboard" && (
+            <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+              {[
+                { id: "main",       label: "Main"    },
+                { id: "lane_parts", label: "ชิ้นส่วน" },
+                { id: "lane_head",  label: "หัว/ใน"  },
+                { id: "lane_pork",  label: "หมูซีก"  },
+              ].map(l => (
+                <button key={l.id} onClick={() => setDashLane(l.id)}
+                  style={{ background: dashLane === l.id ? "#f9fafb" : "#374151", color: dashLane === l.id ? "#111" : "#d1d5db", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>
           🚛 {trucks.length} คัน
         </div>
       </div>
       <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: "20px 14px 100px" }}>
-        {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} />}
+        {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} />}
         {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
         {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} />}
         {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
