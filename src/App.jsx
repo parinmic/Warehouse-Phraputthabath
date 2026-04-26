@@ -157,29 +157,46 @@ const PrintModal = ({ truck, type, onClose }) => {
 };
 
 // ─── PHOTO UPLOADER ───────────────────────────────────────────────────────────
-const PhotoUploader = ({ label, value, onChange }) => {
+const PhotoUploader = ({ label, value, onChange, onRemove }) => {
   const photos = Array.isArray(value) ? value : (value ? [value] : []);
   return (
     <div style={{ marginBottom: 14 }}>
       {label && <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>{label}</label>}
-      <label style={{ display: "block", border: `2px dashed ${photos.length > 0 ? "#6ee7b7" : "#d1d5db"}`, borderRadius: 10, padding: photos.length > 0 ? 10 : 18, cursor: "pointer", background: photos.length > 0 ? "#f0fdf4" : "#fafafa" }}>
-        <input type="file" accept="image/*" multiple onChange={onChange} style={{ display: "none" }} />
+      <div style={{ border: `2px dashed ${photos.length > 0 ? "#6ee7b7" : "#d1d5db"}`, borderRadius: 10, padding: photos.length > 0 ? 10 : 18, background: photos.length > 0 ? "#f0fdf4" : "#fafafa" }}>
         {photos.length > 0
           ? <div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                {photos.map((src, i) => <img key={i} src={src} alt="" style={{ width: "100%", aspectRatio: "1", borderRadius: 6, objectFit: "cover" }} />)}
+                {photos.map((src, i) => (
+                  <div key={i} style={{ position: "relative" }}>
+                    <img src={src} alt="" style={{ width: "100%", aspectRatio: "1", borderRadius: 6, objectFit: "cover", display: "block" }} />
+                    {onRemove && (
+                      <button onClick={e => { e.stopPropagation(); onRemove(photos.filter((_, j) => j !== i)); }}
+                        style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.55)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: 11, fontWeight: 900, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {photos.length < 5 && (
+                  <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", aspectRatio: "1", borderRadius: 6, border: "1.5px dashed #d1d5db", cursor: "pointer", background: "#fff", gap: 2 }}>
+                    <input type="file" accept="image/*" multiple onChange={onChange} style={{ display: "none" }} />
+                    <Icon name="camera" size={18} />
+                    <span style={{ color: "#9ca3af", fontSize: 10 }}>เพิ่ม</span>
+                  </label>
+                )}
               </div>
               <div style={{ textAlign: "center", marginTop: 8, fontSize: 11, color: "#10b981", fontWeight: 700 }}>
-                {photos.length} รูป · แตะเพื่อเลือกใหม่
+                {photos.length} / 5 รูป
               </div>
             </div>
-          : <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          : <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="file" accept="image/*" multiple onChange={onChange} style={{ display: "none" }} />
               <Icon name="camera" size={28} />
               <span style={{ color: "#9ca3af", fontSize: 13 }}>ถ่ายรูป / เลือกจาก Gallery</span>
               <span style={{ color: "#d1d5db", fontSize: 11 }}>สูงสุด 5 รูปต่อครั้ง</span>
-            </div>
+            </label>
         }
-      </label>
+      </div>
     </div>
   );
 };
@@ -1124,7 +1141,7 @@ const QC = ({ trucks, onUpdate }) => {
         <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>อุณหภูมิ (°C)</label>
         <input value={temp} onChange={e => setTemp(e.target.value)} type="number" placeholder="-4"
           style={{ width: "100%", border: `2px solid ${actLane.border}`, borderRadius: 8, padding: "12px 14px", fontSize: 26, fontWeight: 900, outline: "none", boxSizing: "border-box", color: actLane.color, background: "#fff", textAlign: "center", marginBottom: 12 }} />
-        <PhotoUploader label="📷 ถ่ายรูปอุณหภูมิ" value={photo} onChange={handlePhoto} />
+        <PhotoUploader label="📷 ถ่ายรูปอุณหภูมิ" value={photo} onChange={handlePhoto} onRemove={setPhoto} />
       </div>
 
       <button onClick={handleSubmit} disabled={!sel || !temp}
@@ -1239,7 +1256,7 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
           rows={2}
           style={{ width: "100%", border: `1.5px solid ${curLane.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 12, resize: "vertical", fontFamily: "inherit" }}
         />
-        <PhotoUploader label="📷 ถ่ายรูปหลังโหลดเสร็จ" value={form.photo} onChange={handlePhoto(activeLane)} />
+        <PhotoUploader label="📷 ถ่ายรูปหลังโหลดเสร็จ" value={form.photo} onChange={handlePhoto(activeLane)} onRemove={photos => setF(activeLane, { photo: photos })} />
         <button onClick={handleWaiting} disabled={!sel}
           style={{ width: "100%", background: sel ? "#f59e0b" : "#e5e7eb", color: sel ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "13px 0", fontWeight: 700, fontSize: 15, cursor: sel ? "pointer" : "default", marginBottom: 8 }}>
           ⏳ รอเติมสินค้า
