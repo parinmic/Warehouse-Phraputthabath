@@ -1351,7 +1351,7 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
 
   // รถที่ QC ลานนี้ผ่านแล้ว และยังไม่ได้โหลดลานนี้
   const eligibleForLane = (laneId) => trucks.filter(t =>
-    t.status === "picking" &&
+    ["arrived", "picking"].includes(t.status) &&
     t.qcLanes?.[laneId]?.done &&
     !t.loadLanes?.[laneId]?.done
   );
