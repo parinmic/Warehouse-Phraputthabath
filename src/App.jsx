@@ -247,7 +247,7 @@ const exportArchiveExcel = async (dateStr) => {
   const { queue, trucks } = data;
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
   const rows = queue.map((q, i) => {
-    const truck = trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "");
+    const truck = trucks.find(t => t.queueId === q.id);
     return {
       "ลำดับ":                          i + 1,
       "วันที่":                         q.date || dateStr,
@@ -279,14 +279,14 @@ const exportArchiveExcel = async (dateStr) => {
 const Dashboard = ({ trucks, queue, onReset }) => {
   const cnt = (s) => trucks.filter(t => t.status === s).length;
   const stats = [
-    { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.plate === q.plate)).length, color: "#3b82f6", icon: "list"    },
+    { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.queueId === q.id)).length, color: "#3b82f6", icon: "list"    },
     { label: "รถเข้าโรงงานแล้ว", value: trucks.length,                                                    color: "#22c55e", icon: "truck"   },
     { label: "กำลังโหลด",         value: cnt("arrived") + cnt("picking"),                                  color: "#f97316", icon: "loader"  },
     { label: "Invoice แล้ว",      value: cnt("invoiced"),                                                  color: "#6b7280", icon: "invoice" },
   ];
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const walkIns = trucks.filter(t => !queue.find(q => q.id === t.queueId));
   const toMins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
   const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
   const getRemMins = (row) => {
@@ -294,7 +294,7 @@ const Dashboard = ({ trucks, queue, onReset }) => {
     return dt ? Math.round((dt - Date.now()) / 60000) : Infinity;
   };
   const allRows = [
-    ...queue.map(q => ({ key: q.id, date: q.date || "", plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...queue.map(q => ({ key: q.id, date: q.date || "", plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime, truck: trucks.find(t => t.queueId === q.id) })),
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
     const rank = row => {
@@ -842,9 +842,9 @@ const Picking = ({ trucks, queue, onUpdate }) => {
 
   // รวม queue + walk-in (รถที่เข้าแล้วแต่ยังไม่มีในคิว)
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const walkIns = trucks.filter(t => !queue.find(q => q.id === t.queueId));
   const allRows = [
-    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, truck: trucks.find(t => t.queueId === q.id) })),
     ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: "", truck: t })),
   ].sort((a, b) => {
     const rank = t => {
@@ -1177,9 +1177,9 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
 // ── 7. PLANNING ───────────────────────────────────────────────────────────────
 const Planning = ({ trucks, queue, onUpdate }) => {
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const walkIns = trucks.filter(t => !queue.find(q => plateNum(q.plate) === plateNum(t.plate) && plateNum(q.plate) !== ""));
+  const walkIns = trucks.filter(t => !queue.find(q => q.id === t.queueId));
   const allRows = [
-    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, truck: trucks.find(t => plateNum(t.plate) === plateNum(q.plate) && plateNum(q.plate) !== "") })),
+    ...queue.map(q => ({ key: q.id, plate: q.plate, customerGroup: q.customerGroup, truck: trucks.find(t => t.queueId === q.id) })),
     ...walkIns.map(t => ({ key: t.id, plate: t.plate, customerGroup: t.customerGroup || "–", truck: t })),
   ].sort((a, b) => {
     const rank = t => {
@@ -1394,7 +1394,7 @@ export default function App() {
   };
 
   const badge = {
-    driver:        queue.filter(q => !trucks.find(t => t.plate === q.plate)).length,
+    driver:        queue.filter(q => !trucks.find(t => t.queueId === q.id)).length,
     picking:       trucks.filter(t => t.status === "arrived").length,
     qc:            trucks.filter(t => ["arrived","picking"].includes(t.status) && LOADING_LANES.some(l => !t.qcLanes?.[l.id]?.done)).length,
     loading_parts: trucks.filter(t => t.status === "picking" && t.qcLanes?.lane_parts?.done && !t.loadLanes?.lane_parts?.done).length,
