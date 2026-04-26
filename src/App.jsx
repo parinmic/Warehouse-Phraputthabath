@@ -413,6 +413,7 @@ const COL_MAP = {
   date:          ["วันที่","date"],
   plate:         ["ทะเบียนรถ","ทะเบียน","plate"],
   customerGroup: ["กลุ่มลูกค้า","customergroup"],
+  zone:          ["zone","โซน","ลาน"],
   entryTime:     ["เวลารถเข้าโรงงาน","เวลาเข้าโรงงาน","เข้าโรงงาน","entrytime"],
   exitTime:      ["เวลาออกจากโรงงาน","ออกจากโรงงาน","exittime"],
 };
@@ -472,19 +473,19 @@ const LGUpload = ({ queue, onSetQueue }) => {
   const [editData, setEditData] = useState({});
 
   const [addingManual, setAddingManual] = useState(false);
-  const [manualData, setManualData] = useState({ date: "", plate: "", customerGroup: "", entryTime: "", exitTime: "" });
+  const [manualData, setManualData] = useState({ date: "", plate: "", customerGroup: "", zone: "", entryTime: "", exitTime: "" });
 
-  const startEdit = (q) => { setEditId(q.id); setEditData({ plate: q.plate, customerGroup: q.customerGroup, entryTime: q.entryTime, exitTime: q.exitTime }); };
+  const startEdit = (q) => { setEditId(q.id); setEditData({ plate: q.plate, customerGroup: q.customerGroup, zone: q.zone || "", entryTime: q.entryTime, exitTime: q.exitTime }); };
   const cancelEdit = () => { setEditId(null); setEditData({}); };
   const saveEdit = () => {
-    onSetQueue(queue.map(q => q.id === editId ? { ...q, ...editData, time: editData.entryTime } : q));
+    onSetQueue(queue.map(q => q.id === editId ? { ...q, ...editData, zone: editData.zone, time: editData.entryTime } : q));
     setEditId(null); setEditData({});
   };
   const deleteRow = (id) => { if (window.confirm("ลบรถคันนี้ออกจากคิว?")) onSetQueue(queue.filter(q => q.id !== id)); };
   const saveManual = () => {
     if (!manualData.plate) return;
     onSetQueue([...queue, { id: `M${Date.now()}`, ...manualData, time: manualData.entryTime, driver: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", loadTime: "" }]);
-    setManualData({ date: "", plate: "", customerGroup: "", entryTime: "", exitTime: "" });
+    setManualData({ date: "", plate: "", customerGroup: "", zone: "", entryTime: "", exitTime: "" });
     setAddingManual(false);
   };
 
@@ -610,7 +611,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["วันที่","ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน"].map(h => (
+                  {["วันที่","ทะเบียนรถ","กลุ่มลูกค้า","Zone","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน"].map(h => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
@@ -621,6 +622,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
                     <td style={{ padding: "8px 12px", color: "#6b7280" }}>{t.date}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 800 }}>{t.plate}</td>
                     <td style={{ padding: "8px 12px" }}>{t.customerGroup}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#7c3aed" }}>{t.zone}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>{t.entryTime}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#6b7280" }}>{t.exitTime}</td>
                   </tr>
@@ -653,7 +655,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["วันที่","ทะเบียนรถ","กลุ่มลูกค้า","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน",""].map(h => (
+                  {["วันที่","ทะเบียนรถ","กลุ่มลูกค้า","Zone","เวลาเข้าโรงงาน","เวลาออกจากโรงงาน",""].map(h => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
@@ -673,6 +675,11 @@ const LGUpload = ({ queue, onSetQueue }) => {
                         {isEditing
                           ? <input style={inputStyle} value={editData.customerGroup} onChange={e => setEditData(d => ({ ...d, customerGroup: e.target.value }))} />
                           : q.customerGroup}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 700, color: "#7c3aed" }}>
+                        {isEditing
+                          ? <input style={inputStyle} value={editData.zone} placeholder="Zone" onChange={e => setEditData(d => ({ ...d, zone: e.target.value }))} />
+                          : q.zone}
                       </td>
                       <td style={{ padding: "8px 12px", fontWeight: 700, color: "#3b82f6" }}>
                         {isEditing
@@ -705,6 +712,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
                     <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="24/4/2026" value={manualData.date} onChange={e => setManualData(d => ({ ...d, date: e.target.value }))} /></td>
                     <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="กข-1234" value={manualData.plate} onChange={e => setManualData(d => ({ ...d, plate: e.target.value }))} /></td>
                     <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="กลุ่มลูกค้า" value={manualData.customerGroup} onChange={e => setManualData(d => ({ ...d, customerGroup: e.target.value }))} /></td>
+                    <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="Zone" value={manualData.zone} onChange={e => setManualData(d => ({ ...d, zone: e.target.value }))} /></td>
                     <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="HH:MM" value={manualData.entryTime} onChange={e => setManualData(d => ({ ...d, entryTime: e.target.value }))} /></td>
                     <td style={{ padding: "6px 8px" }}><input style={inputStyle} placeholder="HH:MM" value={manualData.exitTime} onChange={e => setManualData(d => ({ ...d, exitTime: e.target.value }))} /></td>
                     <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
@@ -732,25 +740,70 @@ const LGUpload = ({ queue, onSetQueue }) => {
 // ── 2. DRIVER SCAN ────────────────────────────────────────────────────────────
 const DriverScan = ({ queue, trucks, onScan }) => {
   const [plate, setPlate] = useState("");
+  const [step, setStep] = useState("input"); // "input" | "confirm"
+  const [pendingEntry, setPendingEntry] = useState(null);
+  const [selectedZone, setSelectedZone] = useState("");
   const [msg, setMsg] = useState(null);
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
   const matchPlate = (a, b) => plateNum(a) === plateNum(b) && plateNum(a) !== "";
 
-  const handleScan = () => {
+  const handleSearch = () => {
     const p = plate.trim();
     if (!p) return;
-    if (trucks.find(t => matchPlate(t.plate, p))) {
-      setMsg({ t: "warn", text: "⚠️ รถคันนี้เช็คอินแล้ว" }); return;
+    const queueEntries = queue.filter(q => matchPlate(q.plate, p));
+    const usedIds = new Set(trucks.map(t => t.queueId).filter(Boolean));
+    const nextEntry = queueEntries.find(q => !usedIds.has(q.id));
+    if (queueEntries.length > 0 && !nextEntry) {
+      setMsg({ t: "warn", text: "⚠️ รถคันนี้เช็คอินครบทุก trip แล้ว" }); return;
     }
-    const inQueue = queue.find(q => matchPlate(q.plate, p));
-    const entry = inQueue
-      ? { ...inQueue }
-      : { id: `WALK-${Date.now()}`, plate: p, driver: "", customerGroup: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", time: TIME_NOW(), entryTime: TIME_NOW(), loadTime: "", exitTime: "" };
-    onScan({ ...entry, status: "arrived", arrivedAt: TIME_NOW(), pickupPrinted: false, summaryPrinted: false });
-    setMsg({ t: inQueue ? "ok" : "walk", text: inQueue ? `✅ เช็คอินสำเร็จ! ${inQueue.plate}` : `✅ เช็คอินสำเร็จ! ${p} (ยังไม่มีในคิว)` });
-    setPlate("");
+    const entry = nextEntry || { id: `WALK-${Date.now()}`, plate: p, driver: "", customerGroup: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", time: TIME_NOW(), entryTime: TIME_NOW(), loadTime: "", exitTime: "" };
+    const qZone = entry.zone || "";
+    const matched = LOADING_LANES.find(l => l.label === qZone || l.tinyLabel === qZone || qZone.includes(l.tinyLabel));
+    setPendingEntry(entry);
+    setSelectedZone(matched ? matched.label : qZone);
+    setStep("confirm");
+    setMsg(null);
   };
+
+  const handleConfirm = () => {
+    onScan({ ...pendingEntry, zone: selectedZone, status: "arrived", arrivedAt: TIME_NOW(), queueId: pendingEntry.id, pickupPrinted: false, summaryPrinted: false });
+    const isWalkIn = pendingEntry.id.startsWith("WALK-");
+    setMsg({ t: isWalkIn ? "walk" : "ok", text: `✅ เช็คอินสำเร็จ! ${pendingEntry.plate}${selectedZone ? ` — ${selectedZone}` : ""}${isWalkIn ? " (walk-in)" : ""}` });
+    setPlate(""); setPendingEntry(null); setSelectedZone(""); setStep("input");
+  };
+
+  if (step === "confirm" && pendingEntry) return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 900, fontSize: 22 }}>🚛 ยืนยันการเช็คอิน</h2>
+      <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>ตรวจสอบข้อมูลแล้วกดยืนยัน</p>
+      <div style={{ background: "#fff", borderRadius: 14, padding: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", marginBottom: 16 }}>
+        <div style={{ background: "#f9fafb", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>{pendingEntry.plate}</div>
+          {pendingEntry.customerGroup && <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>กลุ่มลูกค้า: {pendingEntry.customerGroup}</div>}
+          {pendingEntry.entryTime && <div style={{ fontSize: 13, color: "#3b82f6", fontWeight: 600 }}>เวลานัด: {pendingEntry.entryTime}</div>}
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>🏗️ เลือกโซน / ลานโหลด</label>
+          <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)}
+            style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", background: "#fff" }}>
+            <option value="">— ไม่ระบุโซน —</option>
+            {LOADING_LANES.map(l => (
+              <option key={l.id} value={l.label}>{l.emoji} {l.label}</option>
+            ))}
+          </select>
+        </div>
+        <button onClick={handleConfirm}
+          style={{ width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
+          ✅ ยืนยันเช็คอิน
+        </button>
+        <button onClick={() => { setStep("input"); setMsg(null); }}
+          style={{ width: "100%", background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+          ← กลับ
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -763,11 +816,11 @@ const DriverScan = ({ queue, trucks, onScan }) => {
           </div>
           <p style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>เช็คอินเข้าโรงงาน</p>
         </div>
-        <input value={plate} onChange={e => setPlate(e.target.value)} onKeyDown={e => e.key === "Enter" && handleScan()}
+        <input value={plate} onChange={e => setPlate(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
           placeholder="กรอกเลขทะเบียนของท่าน เช่น 1234"
           style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "14px 16px", fontSize: 18, fontWeight: 800, textAlign: "center", outline: "none", boxSizing: "border-box" }} />
-        <button onClick={handleScan} style={{ marginTop: 10, width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-          เช็คอินเข้าโรงงาน
+        <button onClick={handleSearch} style={{ marginTop: 10, width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
+          ค้นหา
         </button>
         {msg && (
           <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 10, fontWeight: 600, fontSize: 14,
