@@ -785,7 +785,7 @@ const DriverScan = ({ queue, trucks, onScan }) => {
           <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)}
             style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", background: "#fff" }}>
             <option value="">— ไม่ระบุ —</option>
-            {[...new Set(queue.map(q => q.zone).filter(Boolean))].map(z => (
+            {[...new Set(queue.filter(q => matchPlate(q.plate, pendingEntry.plate)).map(q => q.zone).filter(Boolean))].map(z => (
               <option key={z} value={z}>{z}</option>
             ))}
           </select>
