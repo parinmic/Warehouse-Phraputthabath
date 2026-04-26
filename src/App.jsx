@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./lib/supabase";
 
@@ -55,6 +55,68 @@ async function uploadPhotos(folder, plate, photos) {
   }
   return urls;
 }
+
+// ─── GEOFENCE ────────────────────────────────────────────────────────────────
+const FACTORY_LAT = 14.7260;
+const FACTORY_LNG = 100.7950;
+const GEOFENCE_RADIUS_M = 100; // meters
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function useGeofence() {
+  const [state, setState] = useState({ status: "idle", distance: null, error: null });
+  const watchRef = useRef(null);
+
+  const start = useCallback(() => {
+    if (!navigator.geolocation) {
+      setState({ status: "error", distance: null, error: "เบราว์เซอร์ไม่รองรับ GPS" });
+      return;
+    }
+    setState(s => ({ ...s, status: "loading" }));
+    watchRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const d = haversineDistance(pos.coords.latitude, pos.coords.longitude, FACTORY_LAT, FACTORY_LNG);
+        setState({ status: d <= GEOFENCE_RADIUS_M ? "inside" : "outside", distance: Math.round(d), error: null });
+      },
+      (err) => {
+        const msgs = { 1: "กรุณาอนุญาตการเข้าถึงตำแหน่ง (Location)", 2: "ไม่สามารถหาตำแหน่งได้ กรุณาเปิด GPS", 3: "หมดเวลาหาตำแหน่ง กรุณาลองใหม่" };
+        setState({ status: "error", distance: null, error: msgs[err.code] || err.message });
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => { if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current); };
+  }, []);
+
+  return { ...state, start };
+}
+
+// ─── QR CODE (SVG-based, no external lib) ────────────────────────────────────
+// Minimal QR-like display using a Google Charts API image
+const DRIVER_URL = typeof window !== "undefined"
+  ? `${window.location.origin}${window.location.pathname}?mode=driver`
+  : "";
+
+const QRCodeDisplay = ({ url, size = 220 }) => (
+  <div style={{ textAlign: "center" }}>
+    <img
+      src={`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}`}
+      alt="QR Code"
+      width={size}
+      height={size}
+      style={{ borderRadius: 12, border: "3px solid #e5e7eb" }}
+    />
+  </div>
+);
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
 const Icon = ({ name, size = 20 }) => {
@@ -821,12 +883,77 @@ const LGUpload = ({ queue, onSetQueue }) => {
 };
 
 // ── 2. DRIVER SCAN ────────────────────────────────────────────────────────────
-const DriverScan = ({ queue, trucks, onScan }) => {
+const DriverScan = ({ queue, trucks, onScan, skipGeofence }) => {
   const [plate, setPlate] = useState("");
   const [step, setStep] = useState("input"); // "input" | "confirm"
   const [pendingEntry, setPendingEntry] = useState(null);
   const [selectedZone, setSelectedZone] = useState("");
   const [msg, setMsg] = useState(null);
+  const geo = useGeofence();
+
+  // ── Geofence Gate ──
+  if (!skipGeofence && geo.status !== "inside") {
+    return (
+      <div style={{ minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#fff", borderRadius: 20, padding: "40px 28px", boxShadow: "0 4px 24px rgba(0,0,0,0.10)", textAlign: "center", maxWidth: 380, width: "100%" }}>
+          {geo.status === "idle" && (
+            <>
+              <div style={{ fontSize: 56, marginBottom: 16 }}>📍</div>
+              <h2 style={{ margin: "0 0 8px", fontWeight: 900, fontSize: 20 }}>เช็คอินเข้าโรงงาน</h2>
+              <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px", lineHeight: 1.6 }}>
+                กรุณาอนุญาตการเข้าถึงตำแหน่ง<br />เพื่อยืนยันว่าคุณอยู่ใกล้โรงงาน
+              </p>
+              <button onClick={geo.start}
+                style={{ width: "100%", background: "linear-gradient(135deg, #111 0%, #374151 100%)", color: "#fff", border: "none", borderRadius: 12, padding: "15px 0", fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+                📍 ตรวจสอบตำแหน่ง
+              </button>
+            </>
+          )}
+          {geo.status === "loading" && (
+            <>
+              <div style={{ fontSize: 48, marginBottom: 16, animation: "pulse 1.5s infinite" }}>🛰️</div>
+              <h2 style={{ margin: "0 0 8px", fontWeight: 900, fontSize: 20 }}>กำลังหาตำแหน่ง...</h2>
+              <p style={{ color: "#6b7280", fontSize: 14, margin: 0 }}>รอสักครู่ระบบกำลังตรวจสอบ GPS</p>
+              <style>{`@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }`}</style>
+            </>
+          )}
+          {geo.status === "outside" && (
+            <>
+              <div style={{ fontSize: 56, marginBottom: 12 }}>🚫</div>
+              <h2 style={{ margin: "0 0 8px", fontWeight: 900, fontSize: 20, color: "#dc2626" }}>อยู่นอกพื้นที่โรงงาน</h2>
+              <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
+                <div style={{ fontSize: 32, fontWeight: 900, color: "#dc2626", marginBottom: 4 }}>
+                  {geo.distance >= 1000 ? `${(geo.distance / 1000).toFixed(1)} กม.` : `${geo.distance} เมตร`}
+                </div>
+                <div style={{ fontSize: 13, color: "#991b1b", fontWeight: 600 }}>
+                  ระยะห่างจากโรงงาน (ต้องอยู่ภายใน {GEOFENCE_RADIUS_M} เมตร)
+                </div>
+              </div>
+              <p style={{ color: "#6b7280", fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>
+                กรุณาเดินทางเข้าใกล้โรงงานแล้วลองใหม่<br />ระบบจะตรวจสอบตำแหน่งอัตโนมัติ
+              </p>
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12, fontSize: 12, color: "#166534" }}>
+                💡 ระบบกำลังติดตามตำแหน่งอยู่ — เมื่อเข้าใกล้โรงงานจะเปิดอัตโนมัติ
+              </div>
+            </>
+          )}
+          {geo.status === "error" && (
+            <>
+              <div style={{ fontSize: 56, marginBottom: 12 }}>⚠️</div>
+              <h2 style={{ margin: "0 0 8px", fontWeight: 900, fontSize: 20, color: "#d97706" }}>ไม่สามารถตรวจสอบตำแหน่งได้</h2>
+              <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 12, padding: "14px 18px", marginBottom: 20, fontSize: 14, color: "#92400e", fontWeight: 600 }}>
+                {geo.error}
+              </div>
+              <button onClick={geo.start}
+                style={{ width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 12, padding: "14px 0", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                🔄 ลองใหม่
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
   const matchPlate = (a, b) => plateNum(a) === plateNum(b) && plateNum(a) !== "";
@@ -1501,6 +1628,10 @@ export default function App() {
   const [tab,      setTab]      = useState("dashboard");
   const [dashLane, setDashLane] = useState("main");
   const [time,     setTime]     = useState(TIME_NOW());
+  const [showQR,   setShowQR]   = useState(false);
+
+  // Driver-only mode via URL parameter ?mode=driver
+  const isDriverMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "driver";
 
   useEffect(() => { const id = setInterval(() => setTime(TIME_NOW()), 15000); return () => clearInterval(id); }, []);
 
@@ -1579,6 +1710,21 @@ export default function App() {
     { id: "download",      label: "จบการทำงาน", icon: "invoice"   },
   ];
 
+  // ── Driver-only mode ──
+  if (isDriverMode) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)", fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}>
+        <div style={{ background: "#111", color: "#fff", padding: "0 14px", position: "sticky", top: 0, zIndex: 100, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 22, marginRight: 8 }}>🚛</span>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>เช็คอินคนขับ</div>
+        </div>
+        <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 14px 60px" }}>
+          <DriverScan queue={queue} trucks={trucks} onScan={handleScan} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}>
       <div style={{ background: "#111", color: "#fff", padding: "0 14px", position: "sticky", top: 0, zIndex: 100, height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1615,14 +1761,20 @@ export default function App() {
             </div>
           )}
         </div>
-        <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>
-          🚛 {trucks.length} คัน
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => setShowQR(true)}
+            style={{ background: "#374151", color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+            📱 QR คนขับ
+          </button>
+          <div style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>
+            🚛 {trucks.length} คัน
+          </div>
         </div>
       </div>
       <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: "20px 14px 100px" }}>
         {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} />}
         {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
-        {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} />}
+        {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} skipGeofence />}
         {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
         {tab === "qc"        && <QC trucks={trucks} onUpdate={handleUpdate} />}
         {tab === "loading_parts" && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_parts" />}
@@ -1631,6 +1783,32 @@ export default function App() {
         {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
         {tab === "download"  && <Download onReset={handleReset} />}
       </div>
+
+      {/* QR Code Modal */}
+      {showQR && (
+        <Modal title="📱 QR Code สำหรับคนขับ" onClose={() => setShowQR(false)}>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
+              คนขับสแกน QR Code นี้เพื่อเช็คอินเข้าโรงงาน<br />
+              <span style={{ fontSize: 12, color: "#9ca3af" }}>ใช้งานได้เฉพาะเมื่ออยู่ภายในรัศมี {GEOFENCE_RADIUS_M} เมตร จากโรงงาน</span>
+            </p>
+            <QRCodeDisplay url={DRIVER_URL} size={240} />
+            <div style={{ marginTop: 16, background: "#f9fafb", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#374151", wordBreak: "break-all", fontFamily: "monospace" }}>
+              {DRIVER_URL}
+            </div>
+            <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+              <button onClick={() => { navigator.clipboard?.writeText(DRIVER_URL); }}
+                style={{ flex: 1, background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                📋 คัดลอก URL
+              </button>
+              <button onClick={() => window.print()}
+                style={{ flex: 1, background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                🖨️ พิมพ์ QR Code
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
