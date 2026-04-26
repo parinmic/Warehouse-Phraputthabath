@@ -395,11 +395,6 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
             <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY} <span style={{ color: "#3b82f6", fontVariantNumeric: "tabular-nums" }}>{clock}</span></span>
           </div>
-          <button onClick={onReset}
-            className="desktop-only"
-            style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-            🗑️ ล้างวันใหม่
-          </button>
         </div>
       </div>
 
@@ -1430,7 +1425,7 @@ const Planning = ({ trucks, queue, onUpdate }) => {
 };
 
 // ── DOWNLOAD ─────────────────────────────────────────────────────────────────
-const Download = () => {
+const Download = ({ onReset }) => {
   const [exportDate, setExportDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [archives, setArchives] = useState([]);
@@ -1449,7 +1444,18 @@ const Download = () => {
 
   return (
     <div>
-      <h2 style={{ margin: "0 0 20px", fontWeight: 900, fontSize: 22 }}>📥 ดาวน์โหลดข้อมูลย้อนหลัง</h2>
+      <h2 style={{ margin: "0 0 20px", fontWeight: 900, fontSize: 22 }}>จบการทำงาน</h2>
+
+      <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: 24, maxWidth: 480, marginBottom: 20 }}>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>🗑️ ล้างวันใหม่</div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 14 }}>ล้างข้อมูลรถและคิวทั้งหมด แล้วเริ่มต้นวันใหม่ ข้อมูลจะถูก archive ไว้ก่อน</div>
+        <button onClick={onReset}
+          style={{ background: "#fee2e2", color: "#991b1b", border: "1.5px solid #fca5a5", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 14, cursor: "pointer", width: "100%" }}>
+          🗑️ ล้างวันใหม่
+        </button>
+      </div>
+
+      <h3 style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 16 }}>📥 ดาวน์โหลดข้อมูลย้อนหลัง</h3>
       <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: 24, maxWidth: 480 }}>
         <label style={{ display: "block", fontWeight: 700, fontSize: 13, marginBottom: 8 }}>เลือกวันที่</label>
         <input
@@ -1570,7 +1576,7 @@ export default function App() {
     { id: "loading_head",  label: "⑤ หัว/ใน",  icon: "pig_head"  },
     { id: "loading_pork",  label: "⑤ หมูซีก",  icon: "pig_side"  },
     { id: "planning",      label: "⑦ Ordering", icon: "plan"      },
-    { id: "download",      label: "⑧ Download", icon: "invoice"   },
+    { id: "download",      label: "จบการทำงาน", icon: "invoice"   },
   ];
 
   return (
@@ -1623,7 +1629,7 @@ export default function App() {
         {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
         {tab === "loading_pork"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_pork" />}
         {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
-        {tab === "download"  && <Download />}
+        {tab === "download"  && <Download onReset={handleReset} />}
       </div>
     </div>
   );
