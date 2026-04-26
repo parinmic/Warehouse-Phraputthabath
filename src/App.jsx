@@ -560,6 +560,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
   const handleConfirm = async () => {
     const newQueue = extracted.map((t, i) => ({
       id:            `Q${Date.now()}-${i}`,
+      seq:           i,
       date:          t.date          || "",
       plate:         t.plate        || "",
       driver:        "",
@@ -798,9 +799,15 @@ const DriverScan = ({ queue, trucks, onScan }) => {
           <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)}
             style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", background: "#fff" }}>
             <option value="">— ไม่ระบุ —</option>
-            {[...new Set(queue.filter(q => matchPlate(q.plate, pendingEntry.plate) && !new Set(trucks.map(t => t.queueId).filter(Boolean)).has(q.id)).map(q => q.zone).filter(Boolean))].map(z => (
-              <option key={z} value={z}>{z}</option>
-            ))}
+            {(() => {
+              const usedIds = new Set(trucks.map(t => t.queueId).filter(Boolean));
+              const zones = [];
+              queue
+                .filter(q => matchPlate(q.plate, pendingEntry.plate) && !usedIds.has(q.id))
+                .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+                .forEach(q => { if (q.zone && !zones.includes(q.zone)) zones.push(q.zone); });
+              return zones.map(z => <option key={z} value={z}>{z}</option>);
+            })()}
           </select>
         </div>
         <button onClick={handleConfirm}
@@ -1409,11 +1416,14 @@ export default function App() {
       const { error: upErr } = await supabase.from("wh_queue").upsert(newQueue.map(q => ({ id: q.id, data: q })));
       if (upErr) throw new Error(upErr.message);
     }
-    // merge ข้อมูลคิวกับรถที่เช็คอินไปแล้ว
+    // merge walk-in trucks กับ queue entries แบบ one-to-one เรียงตาม seq
+    const sortedQueue = [...newQueue].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    const usedQueueIds = new Set();
     for (const truck of trucks) {
-      const match = newQueue.find(q => plateNum(q.plate) === plateNum(truck.plate) && plateNum(q.plate) !== "");
+      const match = sortedQueue.find(q => plateNum(q.plate) === plateNum(truck.plate) && plateNum(q.plate) !== "" && !usedQueueIds.has(q.id));
       if (!match) continue;
-      await supabase.from("wh_trucks").upsert({ id: truck.id, data: { ...truck, plate: match.plate, customerGroup: match.customerGroup, zone: match.zone, product: match.customerGroup, destination: match.zone, entryTime: match.entryTime, exitTime: match.exitTime } });
+      usedQueueIds.add(match.id);
+      await supabase.from("wh_trucks").upsert({ id: truck.id, data: { ...truck, plate: match.plate, customerGroup: match.customerGroup, zone: match.zone, queueId: match.id, entryTime: match.entryTime, exitTime: match.exitTime } });
     }
   };
 
