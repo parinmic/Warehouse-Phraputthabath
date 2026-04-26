@@ -298,9 +298,10 @@ const Dashboard = ({ trucks, queue, onReset }) => {
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
     const rank = row => {
-      if (!row.truck) return 1;
-      if (["invoiced","summary_printed"].includes(row.truck.status)) return 2;
-      return 0; // arrived / picking
+      if (!row.truck) return 2;
+      if (["invoiced","summary_printed"].includes(row.truck.status)) return 3;
+      if (row.truck.status === "picking") return 0;
+      return 1; // arrived
     };
     const ra = rank(a), rb = rank(b);
     if (ra !== rb) return ra - rb;
