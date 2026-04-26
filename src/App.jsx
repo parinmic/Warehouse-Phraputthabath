@@ -1696,8 +1696,8 @@ export default function App() {
        for (const lane of Object.keys(upd.loadLanes)) {
          if (upd.loadLanes[lane].done && (!truck.loadLanes || !truck.loadLanes[lane] || !truck.loadLanes[lane].done)) {
            const lName = LOADING_LANES.find(l => l.id === lane)?.tinyLabel || lane;
-           const img = upd.loadLanes[lane].photos?.[0] || null;
-           sendTeamsNotification(`✅ โหลดเสร็จ — รถ ${truck.plate}`, { "ลานโหลด": lName, "เวลาโหลดเสร็จ": upd.loadLanes[lane].doneAt || TIME_NOW() }, img);
+           const imgs = upd.loadLanes[lane].photos || [];
+           sendTeamsNotification(`✅ โหลดเสร็จ — รถ ${truck.plate}`, { "ลานโหลด": lName, "เวลาโหลดเสร็จ": upd.loadLanes[lane].doneAt || TIME_NOW() }, imgs);
          }
        }
     }

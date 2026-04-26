@@ -1,6 +1,6 @@
 const TEAMS_WEBHOOK_URL = "https://default8c308e1514804168aed7b0f7a13520.95.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/81d2242fc7604e0da980e0a536facf6e/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=KRZ0RER4POavOBuEFKdMTghSx2z5SpPqenVycAgnq34";
 
-export const sendTeamsNotification = async (title, details, imageUrl = null) => {
+export const sendTeamsNotification = async (title, details, imageUrls = []) => {
   try {
     const facts = Object.entries(details).map(([title, value]) => ({ title, value }));
 
@@ -31,12 +31,22 @@ export const sendTeamsNotification = async (title, details, imageUrl = null) => 
       ]
     };
 
-    if (imageUrl) {
-      card.attachments[0].content.body.push({
-        type: "Image",
-        url: imageUrl,
-        size: "Auto"
-      });
+    const images = Array.isArray(imageUrls) ? imageUrls : (imageUrls ? [imageUrls] : []);
+    
+    if (images.length > 0) {
+      if (images.length === 1) {
+        card.attachments[0].content.body.push({
+          type: "Image",
+          url: images[0],
+          size: "Auto"
+        });
+      } else {
+        card.attachments[0].content.body.push({
+          type: "ImageSet",
+          imageSize: "Medium",
+          images: images.map(url => ({ type: "Image", url }))
+        });
+      }
     }
 
     const response = await fetch(TEAMS_WEBHOOK_URL, {
