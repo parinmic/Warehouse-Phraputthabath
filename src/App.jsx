@@ -1764,6 +1764,19 @@ export default function App() {
   };
 
   const handleScan = async (t) => {
+    if (t.id.startsWith("WALK-")) {
+      const qData = {
+        id: t.id,
+        date: TODAY,
+        plate: t.plate,
+        customerGroup: t.customerGroup || "",
+        zone: t.zone || "",
+        entryTime: t.entryTime || TIME_NOW(),
+        exitTime: t.exitTime || "",
+        time: t.entryTime || TIME_NOW()
+      };
+      await supabase.from("wh_queue").insert({ id: t.id, data: qData });
+    }
     await supabase.from("wh_trucks").insert({ id: t.id, data: t });
     
     const actualTime = TIME_NOW();
