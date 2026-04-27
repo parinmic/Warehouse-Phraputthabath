@@ -657,6 +657,21 @@ const toHHMM = (val) => {
   return String(val);
 };
 
+// ถ้า exitTime อยู่ในช่วง 00:00–09:00 → วันที่จริงคือ dateStr + 1 (กะข้ามคืน)
+const displayDate = (dateStr, exitTime) => {
+  if (!dateStr || !exitTime) return dateStr || "";
+  const [hStr, minStr] = exitTime.split(":");
+  const h = parseInt(hStr, 10); const min = parseInt(minStr, 10);
+  if (isNaN(h) || isNaN(min) || h * 60 + min > 9 * 60) return dateStr;
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return dateStr;
+  let [d, m, y] = parts.map(Number);
+  if (m > 12) { [d, m] = [m, d]; }
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + 1);
+  return `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
+};
+
 const LGUpload = ({ queue, onSetQueue }) => {
   const [fileName, setFileName] = useState("");
   const [status,   setStatus]   = useState("idle"); // idle | preview | uploading | done | error
@@ -815,7 +830,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
               <tbody>
                 {extracted.map((t, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "8px 12px", color: "#6b7280" }}>{t.date}</td>
+                    <td style={{ padding: "8px 12px", color: "#6b7280" }}>{displayDate(t.date, t.exitTime)}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 800 }}>{t.plate}</td>
                     <td style={{ padding: "8px 12px" }}>{t.customerGroup}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#7c3aed" }}>{t.zone}</td>
@@ -867,7 +882,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
                   const isEditing = editId === q.id;
                   return (
                     <tr key={q.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : undefined }}>
-                      <td style={{ padding: "8px 12px", color: "#6b7280" }}>{q.date}</td>
+                      <td style={{ padding: "8px 12px", color: "#6b7280" }}>{displayDate(q.date, q.exitTime)}</td>
                       <td style={{ padding: "8px 12px", fontWeight: 800 }}>
                         {isEditing
                           ? <input style={inputStyle} value={editData.plate} onChange={e => setEditData(d => ({ ...d, plate: e.target.value }))} />
