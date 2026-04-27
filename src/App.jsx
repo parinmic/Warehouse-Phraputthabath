@@ -1780,9 +1780,11 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
 
   const truck  = trucks.find(t => t.id === selId);
 
-  // unique values from LG queue for dropdowns
-  const queueZones  = [...new Set(queue.map(q => q.zone).filter(Boolean))];
-  const queueGroups = [...new Set(queue.map(q => q.customerGroup).filter(Boolean))];
+  // unique values from queue entries matching this truck's plate
+  const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
+  const matchedQueue = truck ? queue.filter(q => plateNum(q.plate) === plateNum(truck.plate)) : [];
+  const queueZones  = [...new Set(matchedQueue.map(q => q.zone).filter(Boolean))];
+  const queueGroups = [...new Set(matchedQueue.map(q => q.customerGroup).filter(Boolean))];
 
   useEffect(() => {
     if (!truck) { setForm(null); setMsg(""); return; }
