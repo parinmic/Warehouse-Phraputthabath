@@ -1095,8 +1095,9 @@ const DriverScan = ({ queue, trucks, onScan, skipGeofence }) => {
           </div>
           <p style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>เช็คอินเข้าโรงงาน</p>
         </div>
-        <input value={plate} onChange={e => setPlate(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
+        <input value={plate} onChange={e => setPlate(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === "Enter" && handleSearch()}
           placeholder="กรอกเลขทะเบียนของท่าน เช่น 1234"
+          type="tel" inputMode="numeric" pattern="[0-9]*"
           style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "14px 16px", fontSize: 18, fontWeight: 800, textAlign: "center", outline: "none", boxSizing: "border-box" }} />
         <button onClick={handleSearch} style={{ marginTop: 10, width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
           ค้นหา
