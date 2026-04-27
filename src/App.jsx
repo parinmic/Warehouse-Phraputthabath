@@ -456,17 +456,22 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
       if (["invoiced", "summary_printed"].includes(row.truck.status)) return 4;
 
       if (lane) {
-        // If detailMap has data, trucks not assigned to this lane go to bottom
-        if (Object.keys(detailMap || {}).length > 0) {
-          const plateKey = String(row.plate).replace(/\s/g, "").toUpperCase();
-          const laneSets = (detailMap || {})[plateKey];
-          if (laneSets && !laneSets.has(lane)) return 5; // no product for this lane
-        }
-        if (row.truck.loadLanes?.[lane]?.done) return 3;       // โหลดลานนี้เสร็จแล้ว → ล่าง
-        const qcDone = row.truck.qcLanes?.[lane]?.done;
+        const qcDone  = row.truck.qcLanes?.[lane]?.done;
         const waiting = row.truck.loadLanes?.[lane]?.waiting;
-        if (qcDone || waiting) return 0;                        // กำลังโหลด/รอสินค้า → บน
-        return 1;                                               // ยังไม่ QC ลานนี้
+        const loaded  = row.truck.loadLanes?.[lane]?.done;
+
+        if (qcDone || waiting) return 0;  // กำลังโหลด/รอสินค้า → บนสุด (override ทุกอย่าง)
+        if (loaded) return 3;             // โหลดเสร็จแล้ว → ล่าง
+
+        // ถ้ามี detailMap ให้เช็คว่าทะเบียนนี้มีสินค้าลานนี้ไหม
+        if (Object.keys(detailMap || {}).length > 0) {
+          const num = plateNum(row.plate);
+          const matched = num ? Object.entries(detailMap).find(([k]) => plateNum(k) === num) : null;
+          const laneSets = matched ? matched[1] : null;
+          if (!laneSets || !laneSets.has(lane)) return 5;  // ไม่มีสินค้าลานนี้ → ล่างสุด
+        }
+
+        return 1;  // มีสินค้าลานนี้ รอ QC
       }
 
       const anyQC = LOADING_LANES.some(l => row.truck.qcLanes?.[l.id]?.done);
