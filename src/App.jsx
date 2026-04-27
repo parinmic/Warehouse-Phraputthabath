@@ -417,7 +417,7 @@ const exportArchiveExcel = async (dateStr) => {
 
 const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head: "ลานหัว/เครื่องใน", lane_pork: "ลานหมูซีก" };
 
-const Dashboard = ({ trucks, queue, onReset, lane }) => {
+const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   useEffect(() => {
     const id = setInterval(() => setClock(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
@@ -454,15 +454,21 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
     const rank = row => {
       if (!row.truck) return 2;
       if (["invoiced", "summary_printed"].includes(row.truck.status)) return 4;
-      
+
       if (lane) {
+        // If detailMap has data, trucks not assigned to this lane go to bottom
+        if (Object.keys(detailMap || {}).length > 0) {
+          const plateKey = String(row.plate).replace(/\s/g, "").toUpperCase();
+          const laneSets = (detailMap || {})[plateKey];
+          if (laneSets && !laneSets.has(lane)) return 5; // no product for this lane
+        }
         if (row.truck.loadLanes?.[lane]?.done) return 3;       // โหลดลานนี้เสร็จแล้ว → ล่าง
         const qcDone = row.truck.qcLanes?.[lane]?.done;
         const waiting = row.truck.loadLanes?.[lane]?.waiting;
         if (qcDone || waiting) return 0;                        // กำลังโหลด/รอสินค้า → บน
         return 1;                                               // ยังไม่ QC ลานนี้
       }
-      
+
       const anyQC = LOADING_LANES.some(l => row.truck.qcLanes?.[l.id]?.done);
       return anyQC ? 0 : 1;
     };
@@ -1718,18 +1724,224 @@ const Download = ({ onReset }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DETAIL LOADING
+// ─────────────────────────────────────────────────────────────────────────────
+const DETAIL_SOURCES = [
+  { id: "wet_market",    label: "ตลาดสด",       emoji: "🛒", color: "#10b981", bg: "#d1fae5" },
+  { id: "modern_trade", label: "Modern Trade",  emoji: "🏪", color: "#3b82f6", bg: "#dbeafe" },
+  { id: "others",       label: "อื่นๆ",          emoji: "📦", color: "#f97316", bg: "#fff7ed" },
+];
+
+const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
+  const [srcData, setSrcData] = useState({ wet_market: [], modern_trade: [], others: [] });
+  const [masterPreview, setMasterPreview] = useState([]);
+  const [activeUpload, setActiveUpload] = useState(null); // which source is uploading
+
+  // Parse source file (col L=index11=customerGroup flag, col U=index20=productCode, col BN=index65=plate)
+  const parseSourceFile = (file, srcId) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "array", raw: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+        // Find header row (row with col BN header - usually row 0)
+        const dataRows = rows.slice(1).filter(r => r[65] && String(r[65]).trim() !== "");
+        const parsed = dataRows.map(r => ({
+          plate:        String(r[65] || "").trim(),
+          productCode:  String(r[20] || "").trim(),
+          groupFlag:    String(r[11] || "").trim(), // 250=WetMarket, 923=non-WetMarket
+        })).filter(r => r.plate && r.productCode);
+        setSrcData(prev => ({ ...prev, [srcId]: parsed }));
+        onDetailChange(srcId, parsed);
+      } catch(e) {
+        alert("อ่านไฟล์ไม่สำเร็จ: " + e.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Parse master file (col A=index0=productCode, col D=index3=laneId)
+  const parseMasterFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "array", raw: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+        const dataRows = rows.slice(1).filter(r => r[0] && String(r[0]).trim() !== "");
+        const parsed = dataRows.map(r => ({
+          productCode: String(r[0] || "").trim(),
+          laneKey:     String(r[3] || "").trim(), // e.g. lane_parts, lane_head, lane_pork
+        })).filter(r => r.productCode && r.laneKey);
+        setMasterPreview(parsed);
+        onMasterChange(parsed);
+      } catch(e) {
+        alert("อ่านไฟล์ Master ไม่สำเร็จ: " + e.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Compute plate → lanes mapping from all sources + master
+  const plateLaneMap = {};
+  const allDetail = [...(srcData.wet_market || []), ...(srcData.modern_trade || []), ...(srcData.others || [])];
+  for (const row of allDetail) {
+    const match = (masterLane || []).find(m => m.productCode === row.productCode);
+    if (!match) continue;
+    const plateKey = String(row.plate).replace(/\s/g, "").toUpperCase();
+    if (!plateLaneMap[plateKey]) plateLaneMap[plateKey] = new Set();
+    plateLaneMap[plateKey].add(match.laneKey);
+  }
+
+  const srcCounts = DETAIL_SOURCES.map(s => ({
+    ...s,
+    count: srcData[s.id]?.length || 0,
+    plates: [...new Set((srcData[s.id] || []).map(r => r.plate))].length,
+  }));
+
+  return (
+    <div style={{ padding: 20 }}>
+      <h2 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 900 }}>📋 Detail Loading</h2>
+
+      {/* Source upload buttons (1-3) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 24 }}>
+        {DETAIL_SOURCES.map(src => (
+          <div key={src.id} style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: 28 }}>{src.emoji}</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{src.label}</div>
+                {srcData[src.id]?.length > 0 && (
+                  <div style={{ fontSize: 11, color: src.color, fontWeight: 700, marginTop: 2 }}>
+                    {srcData[src.id].length} รายการ · {[...new Set(srcData[src.id].map(r => r.plate))].length} คัน
+                  </div>
+                )}
+              </div>
+            </div>
+            <label style={{ display: "block", background: src.bg, color: src.color, border: `1.5px dashed ${src.color}`, borderRadius: 10, padding: "12px 0", textAlign: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "opacity 0.2s" }}
+              onMouseOver={e => e.currentTarget.style.opacity = "0.8"}
+              onMouseOut={e => e.currentTarget.style.opacity = "1"}>
+              ⬆️ อัปโหลดไฟล์ {src.label}
+              <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+                onChange={e => { if (e.target.files[0]) parseSourceFile(e.target.files[0], src.id); e.target.value = ""; }} />
+            </label>
+            {srcData[src.id]?.length > 0 && (
+              <div style={{ marginTop: 10, maxHeight: 120, overflowY: "auto", fontSize: 11, color: "#6b7280" }}>
+                {[...new Set(srcData[src.id].map(r => r.plate))].slice(0, 10).map(p => (
+                  <div key={p} style={{ padding: "2px 0", borderBottom: "1px solid #f3f4f6" }}>🚛 {p}</div>
+                ))}
+                {[...new Set(srcData[src.id].map(r => r.plate))].length > 10 && (
+                  <div style={{ color: "#9ca3af", paddingTop: 4 }}>+{[...new Set(srcData[src.id].map(r => r.plate))].length - 10} คันอื่น...</div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Master button (4) - persistent */}
+        <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: 20, border: "2px solid #111" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 28 }}>🗂️</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Master ลานโหลด</div>
+              {(masterLane || []).length > 0 && (
+                <div style={{ fontSize: 11, color: "#111", fontWeight: 700, marginTop: 2 }}>
+                  {masterLane.length} รหัสสินค้า (คงอยู่แม้ล้างวัน)
+                </div>
+              )}
+            </div>
+          </div>
+          <label style={{ display: "block", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "12px 0", textAlign: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "opacity 0.2s" }}
+            onMouseOver={e => e.currentTarget.style.opacity = "0.8"}
+            onMouseOut={e => e.currentTarget.style.opacity = "1"}>
+            ⬆️ อัปโหลด / อัปเดต Master
+            <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+              onChange={e => { if (e.target.files[0]) parseMasterFile(e.target.files[0]); e.target.value = ""; }} />
+          </label>
+          {(masterLane || []).length > 0 && (
+            <div style={{ marginTop: 10, maxHeight: 120, overflowY: "auto", fontSize: 11, color: "#6b7280" }}>
+              {(masterLane || []).slice(0, 8).map(m => (
+                <div key={m.productCode} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid #f3f4f6" }}>
+                  <span>{m.productCode}</span>
+                  <span style={{ color: "#374151", fontWeight: 700 }}>{m.laneKey}</span>
+                </div>
+              ))}
+              {(masterLane || []).length > 8 && (
+                <div style={{ color: "#9ca3af", paddingTop: 4 }}>+{(masterLane || []).length - 8} รายการอื่น...</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Result table: plate → lanes */}
+      {Object.keys(plateLaneMap).length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
+            📊 สรุป ทะเบียนรถ → ลานโหลด
+            <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 8 }}>{Object.keys(plateLaneMap).length} คัน</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#f9fafb" }}>
+                  {["ทะเบียนรถ", ...LOADING_LANES.map(l => l.tinyLabel)].map(h => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(plateLaneMap).map(([plate, lanes]) => (
+                  <tr key={plate} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "8px 16px", fontWeight: 800, fontFamily: "monospace" }}>{plate}</td>
+                    {LOADING_LANES.map(l => (
+                      <td key={l.id} style={{ padding: "8px 16px", textAlign: "center" }}>
+                        {lanes.has(l.id)
+                          ? <span style={{ color: l.color, fontWeight: 800, fontSize: 16 }}>✓</span>
+                          : <span style={{ color: "#e5e7eb", fontSize: 14 }}>—</span>
+                        }
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {Object.keys(plateLaneMap).length === 0 && (masterLane || []).length > 0 && allDetail.length > 0 && (
+        <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 12, padding: 20, color: "#92400e", fontWeight: 600, fontSize: 14 }}>
+          ⚠️ ไม่พบรหัสสินค้าที่ Match กับ Master — ตรวจสอบว่า Product Code ในไฟล์ตรงกับ Master หรือไม่
+        </div>
+      )}
+
+      {(masterLane || []).length === 0 && (
+        <div style={{ background: "#f9fafb", border: "1.5px dashed #d1d5db", borderRadius: 12, padding: 20, color: "#9ca3af", fontWeight: 600, fontSize: 14, textAlign: "center" }}>
+          🗂️ กรุณาอัปโหลดไฟล์ Master ลานโหลดก่อน
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 const fetchQueue  = async () => { const { data } = await supabase.from("wh_queue").select("*");  return (data || []).map(r => r.data); };
 const fetchTrucks = async () => { const { data } = await supabase.from("wh_trucks").select("*"); return (data || []).map(r => r.data); };
+const fetchMaster = async () => { const { data } = await supabase.from("wh_master").select("*"); return data && data[0] ? (data[0].data || []) : []; };
 
 export default function App() {
-  const [queue,    setQueue]    = useState([]);
-  const [trucks,   setTrucks]   = useState([]);
-  const [tab,      setTab]      = useState("dashboard");
-  const [dashLane, setDashLane] = useState("main");
-  const [time,     setTime]     = useState(TIME_NOW());
-  const [loading,  setLoading]  = useState(true);
+  const [queue,      setQueue]      = useState([]);
+  const [trucks,     setTrucks]     = useState([]);
+  const [masterLane, setMasterLane] = useState([]); // product→lane mapping (persistent)
+  const [detailMap,  setDetailMap]  = useState({}); // plate→Set(lanes) computed
+  const [tab,        setTab]        = useState("dashboard");
+  const [dashLane,   setDashLane]   = useState("main");
+  const [time,       setTime]       = useState(TIME_NOW());
+  const [loading,    setLoading]    = useState(true);
 
   // Driver-only mode via URL parameter ?mode=driver
   const isDriverMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "driver";
@@ -1739,6 +1951,7 @@ export default function App() {
   useEffect(() => {
     fetchQueue().then(setQueue);
     fetchTrucks().then(setTrucks);
+    fetchMaster().then(setMasterLane);
 
     const channel = supabase.channel("app-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "wh_queue" },  () => fetchQueue().then(setQueue))
@@ -1747,6 +1960,29 @@ export default function App() {
 
     return () => supabase.removeChannel(channel);
   }, []);
+
+  // Rebuild plate→lanes map whenever master or detail data changes
+  const handleMasterChange = async (rows) => {
+    setMasterLane(rows);
+    await supabase.from("wh_master").upsert({ id: "master", data: rows });
+  };
+
+  const handleDetailChange = (srcId, rows) => {
+    // Recompute full detailMap using latest master
+    setDetailMap(prev => {
+      const newSrc = { ...prev, [srcId]: rows };
+      const allDetail = Object.values(newSrc).flat();
+      const map = {};
+      for (const row of allDetail) {
+        const match = masterLane.find(m => m.productCode === row.productCode);
+        if (!match) continue;
+        const k = String(row.plate).replace(/\s/g, "").toUpperCase();
+        if (!map[k]) map[k] = new Set();
+        map[k].add(match.laneKey);
+      }
+      return map;
+    });
+  };
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
 
@@ -1856,8 +2092,9 @@ export default function App() {
     { id: "loading_parts", label: "⑤ ชิ้นส่วน", icon: "pig_cuts"  },
     { id: "loading_head",  label: "⑤ หัว/เครื่องใน",  icon: "pig_head"  },
     { id: "loading_pork",  label: "⑤ หมูซีก",  icon: "pig_side"  },
-    { id: "planning",      label: "⑦ Ordering", icon: "plan"      },
-    { id: "download",      label: "จบการทำงาน", icon: "invoice"   },
+    { id: "planning",      label: "⑦ Ordering",       icon: "plan"      },
+    { id: "detail_loading", label: "⑧ Detail Loading", icon: "clipboard" },
+    { id: "download",       label: "จบการทำงาน",       icon: "invoice"   },
   ];
 
   // ── Driver-only mode ──
@@ -1913,7 +2150,7 @@ export default function App() {
         </div>
       </div>
       <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: tab === "dashboard" ? "8px 14px 14px" : "20px 14px 100px" }}>
-        {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} />}
+        {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} detailMap={detailMap} />}
         {tab === "qr"        && (
           <div style={{ textAlign: "center", maxWidth: 400, margin: "0 auto", background: "#fff", padding: 30, borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
             <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900 }}>📱 QR Code สำหรับคนขับ</h2>
@@ -1943,8 +2180,9 @@ export default function App() {
         {tab === "loading_parts" && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_parts" />}
         {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
         {tab === "loading_pork"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_pork" />}
-        {tab === "planning"  && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
-        {tab === "download"  && <Download onReset={handleReset} />}
+        {tab === "planning"      && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+        {tab === "detail_loading" && <DetailLoading masterLane={masterLane} onMasterChange={handleMasterChange} onDetailChange={handleDetailChange} />}
+        {tab === "download"       && <Download onReset={handleReset} />}
       </div>
 
       {/* QR Code Modal */}
