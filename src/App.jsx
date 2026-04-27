@@ -1780,13 +1780,18 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
 
   const truck  = trucks.find(t => t.id === selId);
 
+  // unique values from LG queue for dropdowns
+  const queueZones  = [...new Set(queue.map(q => q.zone).filter(Boolean))];
+  const queueGroups = [...new Set(queue.map(q => q.customerGroup).filter(Boolean))];
+
   useEffect(() => {
     if (!truck) { setForm(null); setMsg(""); return; }
     setForm({
-      zone:      truck.zone   || "",
-      status:    truck.status || "arrived",
-      qcLanes:   JSON.parse(JSON.stringify(truck.qcLanes   || {})),
-      loadLanes: JSON.parse(JSON.stringify(truck.loadLanes || {})),
+      customerGroup: truck.customerGroup || "",
+      zone:          truck.zone          || "",
+      status:        truck.status        || "arrived",
+      qcLanes:       JSON.parse(JSON.stringify(truck.qcLanes   || {})),
+      loadLanes:     JSON.parse(JSON.stringify(truck.loadLanes || {})),
     });
     setMsg("");
   }, [selId]);
@@ -1816,19 +1821,31 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
         <select value={selId} onChange={e => setSelId(e.target.value)} style={{ ...inp, fontSize: 15 }}>
           <option value="">— เลือกรถ —</option>
           {trucks.map(t => (
-            <option key={t.id} value={t.id}>
-              {t.plate}{t.customerGroup ? ` · ${t.customerGroup}` : ""} — {STATUS_META[t.status]?.label || t.status}
-            </option>
+            <option key={t.id} value={t.id}>{t.plate}</option>
           ))}
         </select>
       </div>
 
       {truck && form && (
         <>
-          {/* Zone */}
+          {/* กลุ่มลูกค้า + Zone */}
           <div style={card}>
-            <label style={lbl}>📍 Zone</label>
-            <input value={form.zone} onChange={e => setForm(f => ({ ...f, zone: e.target.value }))} style={inp} placeholder="Zone" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={lbl}>👥 กลุ่มลูกค้า</label>
+                <select value={form.customerGroup} onChange={e => setForm(f => ({ ...f, customerGroup: e.target.value }))} style={inp}>
+                  <option value="">— ไม่ระบุ —</option>
+                  {queueGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>📍 Zone</label>
+                <select value={form.zone} onChange={e => setForm(f => ({ ...f, zone: e.target.value }))} style={inp}>
+                  <option value="">— ไม่ระบุ —</option>
+                  {queueZones.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Status */}
