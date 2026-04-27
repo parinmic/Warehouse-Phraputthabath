@@ -1212,11 +1212,14 @@ const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","สถานะ","สถานะเพิ่มเติม","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
+                  {["ทะเบียน","กลุ่มลูกค้า"].map(h => (
                     <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                   {LOADING_LANES.map(l => (
                     <th key={l.id} style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: l.color, whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{l.tinyLabel}</th>
+                  ))}
+                  {["เวลาเข้าโรงงาน","สถานะ","สถานะเพิ่มเติม","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
+                    <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1225,6 +1228,18 @@ const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
                   <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
                     <td style={{ padding: "10px 12px", color: "#374151" }}>{customerGroup}</td>
+                    {(() => {
+                      const num = plateNum(plate);
+                      const matched = num ? Object.entries(detailMap).find(([k]) => plateNum(k) === num) : null;
+                      const lanes = matched ? matched[1] : new Set();
+                      return LOADING_LANES.map(l => (
+                        <td key={l.id} style={{ padding: "10px 12px", textAlign: "center" }}>
+                          {lanes.has(l.id)
+                            ? <span style={{ color: l.color, fontWeight: 900, fontSize: 16 }}>✓</span>
+                            : <span style={{ color: "#e5e7eb" }}>—</span>}
+                        </td>
+                      ));
+                    })()}
                     <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
                       <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
                       {truck?.arrivedAt
@@ -1272,17 +1287,6 @@ const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
                     <td style={{ padding: "10px 12px" }}><ExtraStatusCell truck={truck} /></td>
                     <td style={{ padding: "10px 12px" }}><Step3Cell truck={truck} /></td>
                     <td style={{ padding: "10px 12px" }}><Step6Cell truck={truck} /></td>
-                    {(() => {
-                      const plateKey = String(plate).replace(/\s/g, "").toUpperCase();
-                      const lanes = detailMap[plateKey] || new Set();
-                      return LOADING_LANES.map(l => (
-                        <td key={l.id} style={{ padding: "10px 12px", textAlign: "center" }}>
-                          {lanes.has(l.id)
-                            ? <span style={{ color: l.color, fontWeight: 900, fontSize: 16 }}>✓</span>
-                            : <span style={{ color: "#e5e7eb" }}>—</span>}
-                        </td>
-                      ));
-                    })()}
                   </tr>
                 ))}
               </tbody>
