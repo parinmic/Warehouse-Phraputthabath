@@ -37,9 +37,12 @@ export default function Driver() {
           <label className="block text-sm font-bold mb-1">ทะเบียนรถ</label>
           <input
             className="w-full border rounded-lg p-2"
-            placeholder="เช่น กข-1234"
+            placeholder="เช่น 1234"
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={truckPlate}
-            onChange={e => setTruckPlate(e.target.value)}
+            onChange={e => setTruckPlate(e.target.value.replace(/\D/g, ''))}
           />
         </div>
         <div>
