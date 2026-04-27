@@ -1094,7 +1094,7 @@ const DriverScan = ({ queue, trucks, onScan, skipGeofence }) => {
 };
 
 // ── 3+6. PICKING ──────────────────────────────────────────────────────────────
-const Picking = ({ trucks, queue, onUpdate }) => {
+const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
 
   // รวม queue + walk-in (รถที่เข้าแล้วแต่ยังไม่มีในคิว)
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
@@ -1215,6 +1215,9 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                   {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","สถานะ","สถานะเพิ่มเติม","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
                     <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
+                  {LOADING_LANES.map(l => (
+                    <th key={l.id} style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: l.color, whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{l.tinyLabel}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -1269,6 +1272,17 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                     <td style={{ padding: "10px 12px" }}><ExtraStatusCell truck={truck} /></td>
                     <td style={{ padding: "10px 12px" }}><Step3Cell truck={truck} /></td>
                     <td style={{ padding: "10px 12px" }}><Step6Cell truck={truck} /></td>
+                    {(() => {
+                      const plateKey = String(plate).replace(/\s/g, "").toUpperCase();
+                      const lanes = detailMap[plateKey] || new Set();
+                      return LOADING_LANES.map(l => (
+                        <td key={l.id} style={{ padding: "10px 12px", textAlign: "center" }}>
+                          {lanes.has(l.id)
+                            ? <span style={{ color: l.color, fontWeight: 900, fontSize: 16 }}>✓</span>
+                            : <span style={{ color: "#e5e7eb" }}>—</span>}
+                        </td>
+                      ));
+                    })()}
                   </tr>
                 ))}
               </tbody>
@@ -2246,7 +2260,7 @@ export default function App() {
         )}
         {tab === "lg"        && <LGUpload queue={queue} onSetQueue={handleSetQueue} />}
         {tab === "driver"    && <DriverScan queue={queue} trucks={trucks} onScan={handleScan} skipGeofence />}
-        {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
+        {tab === "picking"   && <Picking trucks={trucks} queue={queue} onUpdate={handleUpdate} detailMap={detailMap} />}
         {tab === "qc"        && <QC trucks={trucks} onUpdate={handleUpdate} />}
         {tab === "loading_parts" && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_parts" />}
         {tab === "loading_head"  && <LoadingYard trucks={trucks} onUpdate={handleUpdate} laneId="lane_head" />}
