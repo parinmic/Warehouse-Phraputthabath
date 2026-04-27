@@ -559,6 +559,11 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
                                 );
                               })()
                           }
+                          {truck?.extraStatus && (
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ display: "inline-block", background: "#fee2e2", color: "#991b1b", borderRadius: 12, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>⚠️ {truck.extraStatus}</span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
                         <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
@@ -1123,6 +1128,39 @@ const Picking = ({ trucks, queue, onUpdate }) => {
     !LOADING_LANES.some(l => t.qcLanes?.[l.id]?.done && !t.loadLanes?.[l.id]?.done);
   const doneStep6 = t => t && ["summary_printed","invoiced"].includes(t.status);
 
+  const ExtraStatusCell = ({ truck }) => {
+    if (!truck) return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+    const [isEditing, setIsEditing] = useState(false);
+    const [val, setVal] = useState("");
+
+    if (truck.extraStatus) {
+      return (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fee2e2", color: "#991b1b", padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+          <span>⚠️ {truck.extraStatus}</span>
+          <button onClick={() => onUpdate(truck.id, { extraStatus: "" })} style={{ background: "transparent", border: "none", color: "#991b1b", cursor: "pointer", padding: 0, fontWeight: 900, fontSize: 12 }}>×</button>
+        </div>
+      );
+    }
+    if (isEditing) {
+      return (
+        <div style={{ display: "flex", gap: 4 }}>
+          <input list={`extraStatusOptions-${truck.id}`} autoFocus value={val} onChange={e => setVal(e.target.value)} placeholder="พิมพ์หรือเลือก..." style={{ border: "1px solid #d1d5db", borderRadius: 4, padding: "2px 6px", fontSize: 11, width: 100 }} />
+          <datalist id={`extraStatusOptions-${truck.id}`}>
+            <option value="รอแปรสินค้า" />
+            <option value="ติดปัญหา IT" />
+          </datalist>
+          <button onClick={() => { if(val) onUpdate(truck.id, { extraStatus: val }); setIsEditing(false); }} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
+          <button onClick={() => setIsEditing(false)} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
+        </div>
+      );
+    }
+    return (
+      <button onClick={() => { setIsEditing(true); setVal(""); }} style={{ background: "#f3f4f6", color: "#4b5563", border: "1px dashed #9ca3af", borderRadius: 4, padding: "4px 8px", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}>
+        + เพิ่มสถานะ
+      </button>
+    );
+  };
+
   const Step3Cell = ({ truck }) => {
     if (!truck) return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
     if (doneStep3(truck)) return <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
@@ -1167,7 +1205,7 @@ const Picking = ({ trucks, queue, onUpdate }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","สถานะ","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
+                  {["ทะเบียน","กลุ่มลูกค้า","เวลาเข้าโรงงาน","สถานะ","สถานะเพิ่มเติม","③ พิมพ์ใบเบิกสินค้า","⑥ พิมพ์ใบสรุปจ่าย"].map(h => (
                     <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h}</th>
                   ))}
                 </tr>
@@ -1221,6 +1259,7 @@ const Picking = ({ trucks, queue, onUpdate }) => {
                           })()
                       }
                     </td>
+                    <td style={{ padding: "10px 12px" }}><ExtraStatusCell truck={truck} /></td>
                     <td style={{ padding: "10px 12px" }}><Step3Cell truck={truck} /></td>
                     <td style={{ padding: "10px 12px" }}><Step6Cell truck={truck} /></td>
                   </tr>
