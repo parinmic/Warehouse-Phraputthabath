@@ -1771,6 +1771,158 @@ const Download = ({ onReset }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ADMIN
+// ─────────────────────────────────────────────────────────────────────────────
+const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
+  const [selId, setSelId] = useState("");
+  const [form,  setForm]  = useState(null);
+  const [msg,   setMsg]   = useState("");
+
+  const truck  = trucks.find(t => t.id === selId);
+
+  useEffect(() => {
+    if (!truck) { setForm(null); setMsg(""); return; }
+    setForm({
+      zone:      truck.zone   || "",
+      status:    truck.status || "arrived",
+      qcLanes:   JSON.parse(JSON.stringify(truck.qcLanes   || {})),
+      loadLanes: JSON.parse(JSON.stringify(truck.loadLanes || {})),
+    });
+    setMsg("");
+  }, [selId]);
+
+  const save = async () => {
+    await onUpdate(selId, form);
+    setMsg("✅ บันทึกแล้ว");
+    setTimeout(() => setMsg(""), 2500);
+  };
+
+  const setQC   = (lid, key, val) => setForm(f => ({ ...f, qcLanes:   { ...f.qcLanes,   [lid]: { ...(f.qcLanes[lid]   || {}), [key]: val } } }));
+  const setLoad = (lid, key, val) => setForm(f => ({ ...f, loadLanes: { ...f.loadLanes, [lid]: { ...(f.loadLanes[lid] || {}), [key]: val } } }));
+  const resetQC   = (lid) => setForm(f => ({ ...f, qcLanes:   { ...f.qcLanes,   [lid]: {} } }));
+  const resetLoad = (lid) => setForm(f => ({ ...f, loadLanes: { ...f.loadLanes, [lid]: {} } }));
+
+  const card  = { background: "#fff", borderRadius: 12, padding: "16px 20px", marginBottom: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" };
+  const lbl   = { display: "block", fontWeight: 700, fontSize: 12, color: "#6b7280", marginBottom: 6 };
+  const inp   = { width: "100%", border: "1.5px solid #d1d5db", borderRadius: 8, padding: "9px 12px", fontSize: 14, fontWeight: 600, boxSizing: "border-box", outline: "none" };
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      <h2 style={{ fontWeight: 900, fontSize: 22, marginBottom: 16 }}>⚙️ Admin — แก้ไขข้อมูล</h2>
+
+      {/* Truck selector */}
+      <div style={card}>
+        <label style={lbl}>เลือกทะเบียนรถ</label>
+        <select value={selId} onChange={e => setSelId(e.target.value)} style={{ ...inp, fontSize: 15 }}>
+          <option value="">— เลือกรถ —</option>
+          {trucks.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.plate}{t.customerGroup ? ` · ${t.customerGroup}` : ""} — {STATUS_META[t.status]?.label || t.status}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {truck && form && (
+        <>
+          {/* Zone */}
+          <div style={card}>
+            <label style={lbl}>📍 Zone</label>
+            <input value={form.zone} onChange={e => setForm(f => ({ ...f, zone: e.target.value }))} style={inp} placeholder="Zone" />
+          </div>
+
+          {/* Status */}
+          <div style={card}>
+            <label style={lbl}>🚦 สถานะ</label>
+            <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
+              {Object.entries(STATUS_META).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* QC Lanes */}
+          <div style={card}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>🌡️ QC ลานโหลด</div>
+            {LOADING_LANES.map(l => {
+              const qc = form.qcLanes[l.id] || {};
+              return (
+                <div key={l.id} style={{ borderRadius: 8, border: `1.5px solid ${l.border}`, background: l.bg, padding: "12px 14px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: l.color }}>{l.emoji} {l.tinyLabel}</div>
+                    <button onClick={() => resetQC(l.id)}
+                      style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      ↩ Reset QC
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ flex: "0 0 auto" }}>
+                      <label style={{ ...lbl, marginBottom: 4 }}>อุณหภูมิ (°C)</label>
+                      <input value={qc.temp || ""} onChange={e => setQC(l.id, "temp", e.target.value)}
+                        style={{ ...inp, width: 110 }} placeholder="เช่น -18" />
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 18 }}>
+                      <input type="checkbox" checked={!!qc.done} onChange={e => setQC(l.id, "done", e.target.checked)} style={{ width: 16, height: 16 }} />
+                      QC แล้ว
+                    </label>
+                  </div>
+                  {qc.doneAt && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>บันทึกเมื่อ: {qc.doneAt}</div>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Load Lanes */}
+          <div style={card}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>🏗️ สถานะลานโหลด</div>
+            {LOADING_LANES.map(l => {
+              const ld = form.loadLanes[l.id] || {};
+              return (
+                <div key={l.id} style={{ borderRadius: 8, border: `1.5px solid ${l.border}`, background: l.bg, padding: "12px 14px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: l.color }}>{l.emoji} {l.tinyLabel}</div>
+                    <button onClick={() => resetLoad(l.id)}
+                      style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      ↩ Reset
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", gap: 20 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!ld.waiting} onChange={e => setLoad(l.id, "waiting", e.target.checked)} style={{ width: 16, height: 16 }} />
+                      รอสินค้า
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!ld.done} onChange={e => setLoad(l.id, "done", e.target.checked)} style={{ width: 16, height: 16 }} />
+                      โหลดเสร็จ
+                    </label>
+                  </div>
+                  {(ld.waitingAt || ld.doneAt) && (
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+                      {ld.waitingAt && <span>รอ: {ld.waitingAt} </span>}
+                      {ld.doneAt   && <span>เสร็จ: {ld.doneAt}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {msg && <div style={{ textAlign: "center", color: "#10b981", fontWeight: 700, marginBottom: 12, fontSize: 15 }}>{msg}</div>}
+          <button onClick={save}
+            style={{ width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 12, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
+            💾 บันทึกการแก้ไข
+          </button>
+          <button onClick={() => { if (window.confirm(`ลบรถ ${truck.plate} ออกจากระบบ?`)) onDeleteTruck(truck.id); }}
+            style={{ width: "100%", background: "#fee2e2", color: "#991b1b", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "12px 0", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            🗑️ ลบรถออกจากระบบ (กรณีสแกนทะเบียนผิด)
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DETAIL LOADING
 // ─────────────────────────────────────────────────────────────────────────────
 const DETAIL_SOURCES = [
@@ -2182,6 +2334,10 @@ export default function App() {
     await supabase.from("wh_trucks").upsert({ id, data: { ...truck, ...upd } });
   };
 
+  const handleDeleteTruck = async (id) => {
+    await supabase.from("wh_trucks").delete().eq("id", id);
+  };
+
   const handleReset = async () => {
     if (!window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) return;
     const archiveDate = queue.length > 0
@@ -2233,6 +2389,7 @@ export default function App() {
     { id: "planning",      label: "⑦ Ordering",       icon: "plan"      },
     { id: "detail_loading", label: "⑧ Detail Loading", icon: "clipboard" },
     { id: "download",       label: "จบการทำงาน",       icon: "invoice"   },
+    { id: "admin",          label: "⚙️ Admin",          icon: "plan"      },
   ];
 
   // ── Driver-only mode ──
@@ -2321,6 +2478,7 @@ export default function App() {
         {tab === "planning"      && <Planning trucks={trucks} queue={queue} onUpdate={handleUpdate} />}
         {tab === "detail_loading" && <DetailLoading masterLane={masterLane} onMasterChange={handleMasterChange} onDetailChange={handleDetailChange} />}
         {tab === "download"       && <Download onReset={handleReset} />}
+        {tab === "admin"          && <Admin trucks={trucks} queue={queue} onUpdate={handleUpdate} onDeleteTruck={handleDeleteTruck} />}
       </div>
 
       {/* QR Code Modal */}
