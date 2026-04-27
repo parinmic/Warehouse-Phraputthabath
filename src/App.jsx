@@ -2043,6 +2043,7 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("wh_master_cache") || "[]"); } catch { return []; }
   });
   const [detailMap,  setDetailMap]  = useState({}); // plate→Set(lanes) computed
+  const [srcVersion, setSrcVersion] = useState(0);  // bumped when source files change
   const [tab,        setTab]        = useState("dashboard");
   const [dashLane,   setDashLane]   = useState("main");
   const [time,       setTime]       = useState(TIME_NOW());
@@ -2057,8 +2058,10 @@ export default function App() {
     fetchQueue().then(setQueue);
     fetchTrucks().then(setTrucks);
     fetchMaster().then(rows => {
-      setMasterLane(rows);
-      localStorage.setItem("wh_master_cache", JSON.stringify(rows));
+      if (rows.length > 0) {
+        setMasterLane(rows);
+        localStorage.setItem("wh_master_cache", JSON.stringify(rows));
+      }
     });
 
     const channel = supabase.channel("app-sync")
@@ -2069,18 +2072,12 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // Rebuild plate→lanes map whenever master or detail data changes
-  const handleMasterChange = async (rows) => {
-    setMasterLane(rows);
-    localStorage.setItem("wh_master_cache", JSON.stringify(rows));
-    await supabase.from("wh_master").upsert({ id: "master", data: rows });
-  };
-
-  const handleDetailChange = (srcId, rows) => {
-    // Recompute full detailMap using latest master
-    setDetailMap(prev => {
-      const newSrc = { ...prev, [srcId]: rows };
-      const allDetail = Object.values(newSrc).flat();
+  // Recompute detailMap whenever masterLane or source files change
+  useEffect(() => {
+    if (!masterLane.length) return;
+    try {
+      const stored = JSON.parse(localStorage.getItem("wh_detail_src") || "{}");
+      const allDetail = Object.values(stored).flat();
       const map = {};
       for (const row of allDetail) {
         const rowCode = normalizeProductCode(row.productCode);
@@ -2090,8 +2087,18 @@ export default function App() {
         if (!map[k]) map[k] = new Set();
         map[k].add(match.laneKey);
       }
-      return map;
-    });
+      setDetailMap(map);
+    } catch {}
+  }, [masterLane, srcVersion]);
+
+  const handleMasterChange = async (rows) => {
+    setMasterLane(rows);
+    localStorage.setItem("wh_master_cache", JSON.stringify(rows));
+    await supabase.from("wh_master").upsert({ id: "master", data: rows });
+  };
+
+  const handleDetailChange = () => {
+    setSrcVersion(v => v + 1);
   };
 
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
