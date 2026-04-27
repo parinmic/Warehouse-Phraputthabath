@@ -453,22 +453,22 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   ].sort((a, b) => {
     const rank = row => {
       if (!row.truck) return 2;
-      if (["invoiced", "summary_printed"].includes(row.truck.status)) return 4;
+      if (["invoiced", "summary_printed"].includes(row.truck.status)) return 5;
 
       if (lane) {
         const qcDone  = row.truck.qcLanes?.[lane]?.done;
         const waiting = row.truck.loadLanes?.[lane]?.waiting;
         const loaded  = row.truck.loadLanes?.[lane]?.done;
 
-        if (qcDone || waiting) return 0;  // กำลังโหลด/รอสินค้า → บนสุด (override ทุกอย่าง)
-        if (loaded) return 3;             // โหลดเสร็จแล้ว → ล่าง
+        if (qcDone || waiting) return 0;  // กำลังโหลด/รอสินค้า → บนสุด
+        if (loaded) return 4;             // โหลดเสร็จแล้ว
 
         // ถ้ามี detailMap ให้เช็คว่าทะเบียนนี้มีสินค้าลานนี้ไหม
         if (Object.keys(detailMap || {}).length > 0) {
           const num = plateNum(row.plate);
           const matched = num ? Object.entries(detailMap).find(([k]) => plateNum(k) === num) : null;
           const laneSets = matched ? matched[1] : null;
-          if (!laneSets || !laneSets.has(lane)) return 5;  // ไม่มีสินค้าลานนี้ → ล่างสุด
+          if (!laneSets || !laneSets.has(lane)) return 3;  // ไม่มีสินค้าลานนี้
         }
 
         return 1;  // มีสินค้าลานนี้ รอ QC
