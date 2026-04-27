@@ -2272,7 +2272,7 @@ export default function App() {
           )}
         </div>
       </div>
-      <div style={{ maxWidth: tab === "dashboard" ? "none" : 960, margin: "0 auto", padding: tab === "dashboard" ? "8px 14px 14px" : "20px 14px 100px" }}>
+      <div style={{ maxWidth: tab === "dashboard" ? "none" : tab === "picking" ? 1400 : 960, margin: "0 auto", padding: tab === "dashboard" ? "8px 14px 14px" : "20px 14px 100px" }}>
         {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} detailMap={detailMap} />}
         {tab === "qr"        && (
           <div style={{ textAlign: "center", maxWidth: 400, margin: "0 auto", background: "#fff", padding: 30, borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
