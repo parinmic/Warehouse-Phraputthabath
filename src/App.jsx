@@ -451,16 +451,17 @@ const Dashboard = ({ trucks, queue, onReset, lane }) => {
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
   ].sort((a, b) => {
     const rank = row => {
+      if (!row.truck) return 2;
+      if (["invoiced", "summary_printed"].includes(row.truck.status)) return 4;
+      
       if (lane) {
-        if (!row.truck) return 2;
         if (row.truck.loadLanes?.[lane]?.done) return 3;       // โหลดลานนี้เสร็จแล้ว → ล่าง
         const qcDone = row.truck.qcLanes?.[lane]?.done;
         const waiting = row.truck.loadLanes?.[lane]?.waiting;
         if (qcDone || waiting) return 0;                        // กำลังโหลด/รอสินค้า → บน
         return 1;                                               // ยังไม่ QC ลานนี้
       }
-      if (!row.truck) return 2;
-      if (["invoiced","summary_printed"].includes(row.truck.status)) return 3;
+      
       const anyQC = LOADING_LANES.some(l => row.truck.qcLanes?.[l.id]?.done);
       return anyQC ? 0 : 1;
     };
