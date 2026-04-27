@@ -83,7 +83,7 @@ async function uploadPhotos(folder, plate, photos) {
 // ─── GEOFENCE ────────────────────────────────────────────────────────────────
 const FACTORY_LAT = 14.7260;
 const FACTORY_LNG = 100.7950;
-const GEOFENCE_RADIUS_M = 100; // meters
+const GEOFENCE_RADIUS_M = 2000; // meters (2 km)
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
