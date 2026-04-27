@@ -1748,7 +1748,7 @@ const normalizeLaneKey = (raw) => {
   const t = String(raw || "").trim();
   return LANE_NAME_MAP[t] || null;
 };
-const normalizeProductCode = (val) => String(val || "").replace(/\.0+$/, "").trim();
+const normalizeProductCode = (val) => String(val || "").replace(/\.0+$/, "").trim().replace(/^0+(\d)/, "$1");
 
 const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
   const [srcData, setSrcData] = useState({ wet_market: [], modern_trade: [], others: [] });
@@ -1764,13 +1764,12 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
         const wb = XLSX.read(ev.target.result, { type: "array", raw: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
-        // Find header row (row with col BN header - usually row 0)
         const dataRows = rows.slice(1).filter(r => r[65] && String(r[65]).trim() !== "");
         const parsed = dataRows.map(r => ({
           plate:        String(r[65] || "").trim(),
           productCode:  String(r[20] || "").trim(),
           groupFlag:    String(r[11] || "").trim(), // 250=WetMarket, 923=non-WetMarket
-        })).filter(r => r.plate && r.productCode);
+        })).filter(r => r.plate && r.productCode && /^\d/.test(r.productCode));
         setSrcData(prev => ({ ...prev, [srcId]: parsed }));
         onDetailChange(srcId, parsed);
       } catch(e) {
