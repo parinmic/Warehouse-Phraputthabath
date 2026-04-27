@@ -1775,7 +1775,7 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: "array", raw: true });
+        const wb = XLSX.read(ev.target.result, { type: "array", raw: true, codepage: 874 });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
         const dataRows = rows.slice(1).filter(r => r[65] && String(r[65]).trim() !== "");
@@ -1984,7 +1984,9 @@ const fetchMaster = async () => { const { data } = await supabase.from("wh_maste
 export default function App() {
   const [queue,      setQueue]      = useState([]);
   const [trucks,     setTrucks]     = useState([]);
-  const [masterLane, setMasterLane] = useState([]); // product→lane mapping (persistent)
+  const [masterLane, setMasterLane] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("wh_master_cache") || "[]"); } catch { return []; }
+  });
   const [detailMap,  setDetailMap]  = useState({}); // plate→Set(lanes) computed
   const [tab,        setTab]        = useState("dashboard");
   const [dashLane,   setDashLane]   = useState("main");
@@ -1999,7 +2001,10 @@ export default function App() {
   useEffect(() => {
     fetchQueue().then(setQueue);
     fetchTrucks().then(setTrucks);
-    fetchMaster().then(setMasterLane);
+    fetchMaster().then(rows => {
+      setMasterLane(rows);
+      localStorage.setItem("wh_master_cache", JSON.stringify(rows));
+    });
 
     const channel = supabase.channel("app-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "wh_queue" },  () => fetchQueue().then(setQueue))
@@ -2012,6 +2017,7 @@ export default function App() {
   // Rebuild plate→lanes map whenever master or detail data changes
   const handleMasterChange = async (rows) => {
     setMasterLane(rows);
+    localStorage.setItem("wh_master_cache", JSON.stringify(rows));
     await supabase.from("wh_master").upsert({ id: "master", data: rows });
   };
 
