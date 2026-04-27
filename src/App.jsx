@@ -959,7 +959,7 @@ const DriverScan = ({ queue, trucks, onScan, skipGeofence }) => {
                   {geo.distance >= 1000 ? `${(geo.distance / 1000).toFixed(1)} กม.` : `${geo.distance} เมตร`}
                 </div>
                 <div style={{ fontSize: 13, color: "#991b1b", fontWeight: 600 }}>
-                  ระยะห่างจากโรงงาน (ต้องอยู่ภายใน {GEOFENCE_RADIUS_M} เมตร)
+                  ระยะห่างจากโรงงาน
                 </div>
               </div>
               <p style={{ color: "#6b7280", fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>
@@ -1864,8 +1864,7 @@ export default function App() {
           <div style={{ textAlign: "center", maxWidth: 400, margin: "0 auto", background: "#fff", padding: 30, borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
             <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900 }}>📱 QR Code สำหรับคนขับ</h2>
             <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
-              คนขับสแกน QR Code นี้เพื่อเช็คอินเข้าโรงงาน<br />
-              <span style={{ fontSize: 12, color: "#9ca3af" }}>ใช้งานได้เฉพาะเมื่ออยู่ภายในรัศมี {GEOFENCE_RADIUS_M} เมตร จากโรงงาน</span>
+              คนขับสแกน QR Code นี้เพื่อเช็คอินเข้าโรงงาน
             </p>
             <QRCodeDisplay url={DRIVER_URL} size={240} />
             <div style={{ marginTop: 16, background: "#f9fafb", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#374151", wordBreak: "break-all", fontFamily: "monospace" }}>
