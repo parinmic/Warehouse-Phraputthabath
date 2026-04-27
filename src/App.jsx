@@ -394,19 +394,28 @@ const exportArchiveExcel = async (dateStr) => {
       "Zone":                           q.zone || "",
       "ทะเบียนรถ":                      q.plate || "",
       "น้ำหนักจัดรถ":                   "",
-      "เวลารถเข้าโรงงาน STD":           q.entryTime || "",
-      "เวลารถเข้าโรงงาน ACT":           truck?.arrivedAt || "",
-      "เวลาเข้าโหลดชิ้นส่วน STD":      "",
-      "เวลาเข้าโหลดชิ้นส่วน ACT":      truck?.qcLanes?.lane_parts?.doneAt || "",
-      "เวลาเสร็จสิ้นโหลดชิ้นส่วน":    truck?.loadLanes?.lane_parts?.doneAt || "",
-      "เวลาเข้าโหลดหัวเครื่องใน STD":  "",
-      "เวลาเข้าโหลดหัวเครื่องใน ACT":  truck?.qcLanes?.lane_head?.doneAt || "",
-      "เวลาเสร็จสิ้นโหลดหัวเครื่องใน": truck?.loadLanes?.lane_head?.doneAt || "",
-      "เวลาทำใบสรุปจ่าย":              truck?.summaryPrintedAt || "",
-      "เวลาทำใบ Invoice":               truck?.invoicedAt || "",
-      "เวลาออกจากโรงงาน":              q.exitTime || "",
-      "WT ลูกค้า":                      "",
-      "หมายเหตุ":                       "",
+      "เวลารถเข้าโรงงาน STD":            q.entryTime || "",
+      "เวลารถเข้าโรงงาน ACT":            truck?.arrivedAt || "",
+      "เวลาพิมพ์ใบเบิก (Picking)":       truck?.pickingAt || "",
+      "สถานะเพิ่มเติม":                  truck?.extraStatus || "",
+      "เวลาสถานะเพิ่มเติม":             truck?.extraStatusAt || "",
+      "เวลาเข้าโหลดชิ้นส่วน STD":       "",
+      "เวลาเข้าโหลดชิ้นส่วน ACT":       truck?.qcLanes?.lane_parts?.doneAt || "",
+      "เวลารอสินค้าชิ้นส่วน":           truck?.loadLanes?.lane_parts?.waitingAt || "",
+      "เวลาเสร็จสิ้นโหลดชิ้นส่วน":     truck?.loadLanes?.lane_parts?.doneAt || "",
+      "เวลาเข้าโหลดหัวเครื่องใน STD":   "",
+      "เวลาเข้าโหลดหัวเครื่องใน ACT":   truck?.qcLanes?.lane_head?.doneAt || "",
+      "เวลารอสินค้าหัวเครื่องใน":       truck?.loadLanes?.lane_head?.waitingAt || "",
+      "เวลาเสร็จสิ้นโหลดหัวเครื่องใน":  truck?.loadLanes?.lane_head?.doneAt || "",
+      "เวลาเข้าโหลดหมูซีก STD":         "",
+      "เวลาเข้าโหลดหมูซีก ACT":         truck?.qcLanes?.lane_pork?.doneAt || "",
+      "เวลารอสินค้าหมูซีก":             truck?.loadLanes?.lane_pork?.waitingAt || "",
+      "เวลาเสร็จสิ้นโหลดหมูซีก":       truck?.loadLanes?.lane_pork?.doneAt || "",
+      "เวลาทำใบสรุปจ่าย":               truck?.summaryPrintedAt || "",
+      "เวลาทำใบ Invoice":                truck?.invoicedAt || "",
+      "เวลาออกจากโรงงาน":               q.exitTime || "",
+      "WT ลูกค้า":                       "",
+      "หมายเหตุ":                        "",
     };
   });
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -1161,7 +1170,7 @@ const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
             <option value="รอแปรสินค้า" />
             <option value="ติดปัญหา IT" />
           </datalist>
-          <button onClick={() => { if(val) onUpdate(truck.id, { extraStatus: val }); setIsEditing(false); }} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
+          <button onClick={() => { if(val) onUpdate(truck.id, { extraStatus: val, extraStatusAt: TIME_NOW() }); setIsEditing(false); }} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
           <button onClick={() => setIsEditing(false)} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
         </div>
       );
@@ -1177,7 +1186,7 @@ const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
     if (!truck) return <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
     if (doneStep3(truck)) return <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
     if (canStep3(truck)) return (
-      <button onClick={() => onUpdate(truck.id, { pickupPrinted: true, status: "picking" })}
+      <button onClick={() => onUpdate(truck.id, { pickupPrinted: true, status: "picking", pickingAt: TIME_NOW() })}
         style={{ background: "#c2410c", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontWeight: 700, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
         🖨️ เบิก
       </button>
@@ -1462,7 +1471,7 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
   const handleWaiting = () => {
     if (!sel) return;
     if (!window.confirm(`ยืนยัน: ${sel.plate} — รอเติมสินค้า?`)) return;
-    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { ...(sel.loadLanes?.[activeLane] || {}), waiting: true, note: form.note } };
+    const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { ...(sel.loadLanes?.[activeLane] || {}), waiting: true, waitingAt: TIME_NOW(), note: form.note } };
     onUpdate(sel.id, { loadLanes });
     setF(activeLane, { selId: "", photo: null, note: "" });
   };
