@@ -476,7 +476,9 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
         const waiting = row.truck?.loadLanes?.[lane]?.waiting;
         if (qcDone || waiting) return 0;   // กำลังโหลดอยู่ → บนสุด
       } else {
-        const anyActive = LOADING_LANES.some(l => row.truck?.qcLanes?.[l.id]?.done);
+        const anyActive = LOADING_LANES.some(l =>
+          row.truck?.qcLanes?.[l.id]?.done && !row.truck?.loadLanes?.[l.id]?.done
+        );
         if (anyActive) return 0;           // กำลังโหลดอยู่ → บนสุด
       }
 
