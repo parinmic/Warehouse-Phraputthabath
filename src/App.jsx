@@ -1789,14 +1789,23 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
   useEffect(() => {
     if (!truck) { setForm(null); setMsg(""); return; }
     setForm({
+      queueId:       truck.queueId       || "",
       customerGroup: truck.customerGroup || "",
       zone:          truck.zone          || "",
+      entryTime:     truck.entryTime     || "",
+      exitTime:      truck.exitTime      || "",
       status:        truck.status        || "arrived",
       qcLanes:       JSON.parse(JSON.stringify(truck.qcLanes   || {})),
       loadLanes:     JSON.parse(JSON.stringify(truck.loadLanes || {})),
     });
     setMsg("");
   }, [selId]);
+
+  const linkQueue = (qid) => {
+    const q = matchedQueue.find(q => q.id === qid);
+    if (!q) return;
+    setForm(f => ({ ...f, queueId: q.id, zone: q.zone || "", customerGroup: q.customerGroup || "", entryTime: q.entryTime || "", exitTime: q.exitTime || "" }));
+  };
 
   const save = async () => {
     await onUpdate(selId, form);
@@ -1830,6 +1839,24 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
 
       {truck && form && (
         <>
+          {/* ผูก Queue Entry */}
+          <div style={card}>
+            <label style={lbl}>🔗 ผูก Queue Entry (เปลี่ยนข้อมูลจาก LG)</label>
+            <select value={form.queueId} onChange={e => linkQueue(e.target.value)} style={{ ...inp, fontSize: 13 }}>
+              <option value="">— เลือก Queue Entry —</option>
+              {matchedQueue.map(q => (
+                <option key={q.id} value={q.id}>
+                  {q.zone || "–"} · {q.customerGroup || "–"} · เข้า {q.entryTime || "–"} · ออก {q.exitTime || "–"}
+                </option>
+              ))}
+            </select>
+            {form.queueId && (
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+                ผูกอยู่กับ: Zone <b>{form.zone || "–"}</b> · กลุ่ม <b>{form.customerGroup || "–"}</b> · ออก <b>{form.exitTime || "–"}</b>
+              </div>
+            )}
+          </div>
+
           {/* กลุ่มลูกค้า + Zone */}
           <div style={card}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
