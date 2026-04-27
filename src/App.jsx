@@ -1764,7 +1764,13 @@ const LANE_NAME_MAP = {
 };
 const normalizeLaneKey = (raw) => {
   const t = String(raw || "").trim();
-  return LANE_NAME_MAP[t] || null;
+  if (!t) return null;
+  if (LANE_NAME_MAP[t]) return LANE_NAME_MAP[t];
+  // partial match fallback
+  if (t.includes("ชิ้นส่วน")) return "lane_parts";
+  if (t.includes("หัว") || t.includes("เครื่องใน")) return "lane_head";
+  if (t.includes("หมูซีก") || t.includes("ซีก") || t.includes("หมู")) return "lane_pork";
+  return null;
 };
 const normalizeProductCode = (val) => String(val || "").replace(/\.0+$/, "").trim().replace(/^0+(\d)/, "$1");
 
@@ -1785,9 +1791,10 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
     try { return JSON.parse(localStorage.getItem("wh_detail_names") || "{}"); } catch { return {}; }
   };
 
-  const [srcData,   setSrcData]   = useState(() => ({ wet_market: [], modern_trade: [], others: [], ...initSrc() }));
-  const [fileNames, setFileNames] = useState(initNames);
-  const [showDebug, setShowDebug] = useState(false);
+  const [srcData,     setSrcData]     = useState(() => ({ wet_market: [], modern_trade: [], others: [], ...initSrc() }));
+  const [fileNames,   setFileNames]   = useState(initNames);
+  const [showDebug,   setShowDebug]   = useState(false);
+  const [masterDebug, setMasterDebug] = useState(null); // { total, parsed, sampleCol3 }
 
   // On mount: replay stored source data into parent
   useEffect(() => {
@@ -1846,10 +1853,17 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
         const dataRows = rows.slice(1).filter(r => r[0] && String(r[0]).trim() !== "" && String(r[0]).trim() !== "SAP");
-        const parsed = dataRows.map(r => ({
+        const mapped = dataRows.map(r => ({
           productCode: normalizeProductCode(r[0]),
           laneKey:     normalizeLaneKey(r[3]),
-        })).filter(r => r.productCode && r.laneKey);
+          rawCol3:     String(r[3] || "").trim(),
+        }));
+        const parsed = mapped.filter(r => r.productCode && r.laneKey);
+        setMasterDebug({
+          total:    dataRows.length,
+          matched:  parsed.length,
+          sampleCol3: [...new Set(mapped.map(r => r.rawCol3))].slice(0, 6),
+        });
         setFileNames(prev => {
           const next = { ...prev, master: file.name };
           localStorage.setItem("wh_detail_names", JSON.stringify(next));
@@ -1924,6 +1938,13 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
             <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
               onChange={e => { if (e.target.files[0]) parseMasterFile(e.target.files[0]); e.target.value = ""; }} />
           </label>
+          {masterDebug && (
+            <div style={{ marginTop: 10, fontSize: 11, padding: "8px 10px", borderRadius: 8, background: masterDebug.matched === 0 ? "#fee2e2" : "#d1fae5", color: masterDebug.matched === 0 ? "#991b1b" : "#065f46" }}>
+              {masterDebug.matched === 0
+                ? <>❌ Match 0/{masterDebug.total} — ค่าใน col D: {masterDebug.sampleCol3.map(v => `"${v}"`).join(", ")}</>
+                : <>✅ Match {masterDebug.matched}/{masterDebug.total} รหัส</>}
+            </div>
+          )}
         </div>
       </div>
 
