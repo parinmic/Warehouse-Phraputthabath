@@ -35,6 +35,7 @@ const FLOW_STEPS = [
 ];
 
 const TODAY = new Date().toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" });
+const SHORT_DATE = `${new Date().getDate()}/${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
 const TIME_NOW = () => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 const getStep = (status) => STATUS_META[status]?.step ?? 0;
 
@@ -659,7 +660,7 @@ const LGUpload = ({ queue, onSetQueue }) => {
   const deleteRow = (id) => { if (window.confirm("ลบรถคันนี้ออกจากคิว?")) onSetQueue(queue.filter(q => q.id !== id)); };
   const saveManual = () => {
     if (!manualData.plate) return;
-    onSetQueue([...queue, { id: `M${Date.now()}`, ...manualData, time: manualData.entryTime, driver: "", zone: "", product: "", destination: "", qty: 0, unit: "กก.", loadTime: "" }]);
+    onSetQueue([...queue, { id: `M${Date.now()}`, ...manualData, date: manualData.date || SHORT_DATE, time: manualData.entryTime, driver: "", zone: manualData.zone || "", product: "", destination: "", qty: 0, unit: "กก.", loadTime: "" }]);
     setManualData({ date: "", plate: "", customerGroup: "", zone: "", entryTime: "", exitTime: "" });
     setAddingManual(false);
   };
@@ -1768,7 +1769,7 @@ export default function App() {
       const qData = {
         id: t.id,
         seq: queue.length + 1,
-        date: TODAY,
+        date: SHORT_DATE,
         plate: t.plate,
         customerGroup: t.customerGroup || "",
         zone: t.zone || "",
