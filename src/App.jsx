@@ -466,7 +466,8 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   const allRows = [
     ...dashQueueRows,
     ...walkIns.map(t => ({ key: t.id, date: t.date || "", plate: t.plate, customerGroup: t.customerGroup || "–", entryTime: t.entryTime || "", exitTime: t.exitTime || "", truck: t })),
-  ].sort((a, b) => {
+  ].filter(row => !lane || !row.truck?.loadLanes?.[lane]?.done)
+  .sort((a, b) => {
     const rank = row => {
       if (!row.truck) return 2;
       if (["invoiced", "summary_printed"].includes(row.truck.status)) return 5;
