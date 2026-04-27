@@ -1750,9 +1750,18 @@ const normalizeLaneKey = (raw) => {
 };
 const normalizeProductCode = (val) => String(val || "").replace(/\.0+$/, "").trim().replace(/^0+(\d)/, "$1");
 
+const DETAIL_LS_VER = "v2"; // bump when encoding/format changes — forces re-upload
+
 const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
   const initSrc = () => {
-    try { return JSON.parse(localStorage.getItem("wh_detail_src") || "{}"); } catch { return {}; }
+    try {
+      if (localStorage.getItem("wh_detail_ver") !== DETAIL_LS_VER) {
+        ["wh_detail_src", "wh_detail_names"].forEach(k => localStorage.removeItem(k));
+        localStorage.setItem("wh_detail_ver", DETAIL_LS_VER);
+        return {};
+      }
+      return JSON.parse(localStorage.getItem("wh_detail_src") || "{}");
+    } catch { return {}; }
   };
   const initNames = () => {
     try { return JSON.parse(localStorage.getItem("wh_detail_names") || "{}"); } catch { return {}; }
@@ -1775,7 +1784,14 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: "array", raw: true, codepage: 874 });
+        let wb;
+        if (/\.csv$/i.test(file.name)) {
+          // CSV with Thai Windows-874 encoding: decode bytes manually
+          const text = new TextDecoder("windows-874").decode(new Uint8Array(ev.target.result));
+          wb = XLSX.read(text, { type: "string" });
+        } else {
+          wb = XLSX.read(ev.target.result, { type: "array", raw: true, codepage: 874 });
+        }
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
         const dataRows = rows.slice(1).filter(r => r[65] && String(r[65]).trim() !== "");
