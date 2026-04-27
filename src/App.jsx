@@ -1751,12 +1751,26 @@ const normalizeLaneKey = (raw) => {
 const normalizeProductCode = (val) => String(val || "").replace(/\.0+$/, "").trim().replace(/^0+(\d)/, "$1");
 
 const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
-  const [srcData, setSrcData] = useState({ wet_market: [], modern_trade: [], others: [] });
-  const [masterPreview, setMasterPreview] = useState([]);
-  const [activeUpload, setActiveUpload] = useState(null); // which source is uploading
+  const initSrc = () => {
+    try { return JSON.parse(localStorage.getItem("wh_detail_src") || "{}"); } catch { return {}; }
+  };
+  const initNames = () => {
+    try { return JSON.parse(localStorage.getItem("wh_detail_names") || "{}"); } catch { return {}; }
+  };
+
+  const [srcData,   setSrcData]   = useState(() => ({ wet_market: [], modern_trade: [], others: [], ...initSrc() }));
+  const [fileNames, setFileNames] = useState(initNames);
   const [showDebug, setShowDebug] = useState(false);
 
-  // Parse source file (col L=index11=customerGroup flag, col U=index20=productCode, col BN=index65=plate)
+  // On mount: replay stored source data into parent
+  useEffect(() => {
+    const stored = initSrc();
+    Object.entries(stored).forEach(([srcId, rows]) => {
+      if (rows?.length) onDetailChange(srcId, rows);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Parse source file (col U=index20=productCode, col BN=index65=plate)
   const parseSourceFile = (file, srcId) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -1768,9 +1782,19 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
         const parsed = dataRows.map(r => ({
           plate:        String(r[65] || "").trim(),
           productCode:  String(r[20] || "").trim(),
-          groupFlag:    String(r[11] || "").trim(), // 250=WetMarket, 923=non-WetMarket
+          groupFlag:    String(r[11] || "").trim(),
         })).filter(r => r.plate && r.productCode && /^\d/.test(r.productCode));
-        setSrcData(prev => ({ ...prev, [srcId]: parsed }));
+
+        setSrcData(prev => {
+          const next = { ...prev, [srcId]: parsed };
+          localStorage.setItem("wh_detail_src", JSON.stringify(next));
+          return next;
+        });
+        setFileNames(prev => {
+          const next = { ...prev, [srcId]: file.name };
+          localStorage.setItem("wh_detail_names", JSON.stringify(next));
+          return next;
+        });
         onDetailChange(srcId, parsed);
       } catch(e) {
         alert("อ่านไฟล์ไม่สำเร็จ: " + e.message);
@@ -1792,7 +1816,11 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
           productCode: normalizeProductCode(r[0]),
           laneKey:     normalizeLaneKey(r[3]),
         })).filter(r => r.productCode && r.laneKey);
-        setMasterPreview(parsed);
+        setFileNames(prev => {
+          const next = { ...prev, master: file.name };
+          localStorage.setItem("wh_detail_names", JSON.stringify(next));
+          return next;
+        });
         onMasterChange(parsed);
       } catch(e) {
         alert("อ่านไฟล์ Master ไม่สำเร็จ: " + e.message);
@@ -1813,12 +1841,6 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
     plateLaneMap[plateKey].add(match.laneKey);
   }
 
-  const srcCounts = DETAIL_SOURCES.map(s => ({
-    ...s,
-    count: srcData[s.id]?.length || 0,
-    plates: [...new Set((srcData[s.id] || []).map(r => r.plate))].length,
-  }));
-
   return (
     <div style={{ padding: 20 }}>
       <h2 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 900 }}>📋 Detail Loading</h2>
@@ -1831,9 +1853,9 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
               <span style={{ fontSize: 28 }}>{src.emoji}</span>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15 }}>{src.label}</div>
-                {srcData[src.id]?.length > 0 && (
+                {fileNames[src.id] && (
                   <div style={{ fontSize: 11, color: src.color, fontWeight: 700, marginTop: 2 }}>
-                    {srcData[src.id].length} รายการ · {[...new Set(srcData[src.id].map(r => r.plate))].length} คัน
+                    ✅ {fileNames[src.id]}
                   </div>
                 )}
               </div>
@@ -1841,20 +1863,10 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
             <label style={{ display: "block", background: src.bg, color: src.color, border: `1.5px dashed ${src.color}`, borderRadius: 10, padding: "12px 0", textAlign: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "opacity 0.2s" }}
               onMouseOver={e => e.currentTarget.style.opacity = "0.8"}
               onMouseOut={e => e.currentTarget.style.opacity = "1"}>
-              ⬆️ อัปโหลดไฟล์ {src.label}
+              {fileNames[src.id] ? "🔄 เปลี่ยนไฟล์" : "⬆️ อัปโหลดไฟล์"} {src.label}
               <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
                 onChange={e => { if (e.target.files[0]) parseSourceFile(e.target.files[0], src.id); e.target.value = ""; }} />
             </label>
-            {srcData[src.id]?.length > 0 && (
-              <div style={{ marginTop: 10, maxHeight: 120, overflowY: "auto", fontSize: 11, color: "#6b7280" }}>
-                {[...new Set(srcData[src.id].map(r => r.plate))].slice(0, 10).map(p => (
-                  <div key={p} style={{ padding: "2px 0", borderBottom: "1px solid #f3f4f6" }}>🚛 {p}</div>
-                ))}
-                {[...new Set(srcData[src.id].map(r => r.plate))].length > 10 && (
-                  <div style={{ color: "#9ca3af", paddingTop: 4 }}>+{[...new Set(srcData[src.id].map(r => r.plate))].length - 10} คันอื่น...</div>
-                )}
-              </div>
-            )}
           </div>
         ))}
 
@@ -1864,9 +1876,9 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
             <span style={{ fontSize: 28 }}>🗂️</span>
             <div>
               <div style={{ fontWeight: 800, fontSize: 15 }}>Master ลานโหลด</div>
-              {(masterLane || []).length > 0 && (
+              {fileNames.master && (
                 <div style={{ fontSize: 11, color: "#111", fontWeight: 700, marginTop: 2 }}>
-                  {masterLane.length} รหัสสินค้า (คงอยู่แม้ล้างวัน)
+                  ✅ {fileNames.master}
                 </div>
               )}
             </div>
@@ -1874,23 +1886,10 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
           <label style={{ display: "block", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "12px 0", textAlign: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "opacity 0.2s" }}
             onMouseOver={e => e.currentTarget.style.opacity = "0.8"}
             onMouseOut={e => e.currentTarget.style.opacity = "1"}>
-            ⬆️ อัปโหลด / อัปเดต Master
+            {fileNames.master ? "🔄 เปลี่ยน Master" : "⬆️ อัปโหลด Master"}
             <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
               onChange={e => { if (e.target.files[0]) parseMasterFile(e.target.files[0]); e.target.value = ""; }} />
           </label>
-          {(masterLane || []).length > 0 && (
-            <div style={{ marginTop: 10, maxHeight: 120, overflowY: "auto", fontSize: 11, color: "#6b7280" }}>
-              {(masterLane || []).slice(0, 8).map(m => (
-                <div key={m.productCode} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid #f3f4f6" }}>
-                  <span>{m.productCode}</span>
-                  <span style={{ color: "#374151", fontWeight: 700 }}>{m.laneKey}</span>
-                </div>
-              ))}
-              {(masterLane || []).length > 8 && (
-                <div style={{ color: "#9ca3af", paddingTop: 4 }}>+{(masterLane || []).length - 8} รายการอื่น...</div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
