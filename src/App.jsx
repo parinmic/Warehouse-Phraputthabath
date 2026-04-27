@@ -1767,6 +1767,7 @@ export default function App() {
     if (t.id.startsWith("WALK-")) {
       const qData = {
         id: t.id,
+        seq: queue.length + 1,
         date: TODAY,
         plate: t.plate,
         customerGroup: t.customerGroup || "",
@@ -1775,9 +1776,9 @@ export default function App() {
         exitTime: t.exitTime || "",
         time: t.entryTime || TIME_NOW()
       };
-      await supabase.from("wh_queue").insert({ id: t.id, data: qData });
+      await supabase.from("wh_queue").upsert({ id: t.id, data: qData });
     }
-    await supabase.from("wh_trucks").insert({ id: t.id, data: t });
+    await supabase.from("wh_trucks").upsert({ id: t.id, data: t });
     
     const actualTime = TIME_NOW();
     const diffStr = calcTimeDiffStr(t.entryTime, actualTime);
