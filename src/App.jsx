@@ -1754,6 +1754,7 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
   const [srcData, setSrcData] = useState({ wet_market: [], modern_trade: [], others: [] });
   const [masterPreview, setMasterPreview] = useState([]);
   const [activeUpload, setActiveUpload] = useState(null); // which source is uploading
+  const [showDebug, setShowDebug] = useState(false);
 
   // Parse source file (col L=index11=customerGroup flag, col U=index20=productCode, col BN=index65=plate)
   const parseSourceFile = (file, srcId) => {
@@ -1933,6 +1934,36 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
       {Object.keys(plateLaneMap).length === 0 && (masterLane || []).length > 0 && allDetail.length > 0 && (
         <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 12, padding: 20, color: "#92400e", fontWeight: 600, fontSize: 14 }}>
           ⚠️ ไม่พบรหัสสินค้าที่ Match กับ Master — ตรวจสอบว่า Product Code ในไฟล์ตรงกับ Master หรือไม่
+          <button onClick={() => setShowDebug(v => !v)} style={{ marginLeft: 12, background: "#92400e", color: "#fff", border: "none", borderRadius: 8, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontWeight: 700 }}>
+            {showDebug ? "ซ่อน" : "🔍 ดู Debug"}
+          </button>
+        </div>
+      )}
+
+      {showDebug && (masterLane || []).length > 0 && allDetail.length > 0 && (
+        <div style={{ background: "#1e1e2e", borderRadius: 12, padding: 16, marginTop: 12, fontFamily: "monospace", fontSize: 12 }}>
+          <div style={{ color: "#cba6f7", fontWeight: 700, marginBottom: 8 }}>🔍 Debug: เปรียบเทียบรหัสสินค้า</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div>
+              <div style={{ color: "#a6e3a1", fontWeight: 700, marginBottom: 4 }}>Master (5 แรก)</div>
+              {(masterLane || []).slice(0, 5).map((m, i) => (
+                <div key={i} style={{ color: "#cdd6f4", padding: "2px 0" }}>
+                  <span style={{ color: "#f9e2af" }}>[{typeof m.productCode}]</span> "{m.productCode}" → {m.laneKey || <span style={{ color: "#f38ba8" }}>null (lane ไม่ match)</span>}
+                </div>
+              ))}
+            </div>
+            <div>
+              <div style={{ color: "#89b4fa", fontWeight: 700, marginBottom: 4 }}>Source (5 แรก)</div>
+              {allDetail.slice(0, 5).map((r, i) => (
+                <div key={i} style={{ color: "#cdd6f4", padding: "2px 0" }}>
+                  <span style={{ color: "#f9e2af" }}>[{typeof r.productCode}]</span> "{r.productCode}" → plate: {r.plate}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ color: "#6c7086", marginTop: 8, fontSize: 11 }}>
+            ถ้า type ต่างกัน (number vs string) หรือ leading zeros หาย → นั่นคือสาเหตุ
+          </div>
         </div>
       )}
 
