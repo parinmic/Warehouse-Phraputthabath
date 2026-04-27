@@ -334,12 +334,19 @@ const TruckCard = ({ t, children, highlight }) => (
 // ── TIME BAR ──────────────────────────────────────────────────────────────────
 const parseExitDatetime = (dateStr, timeStr) => {
   if (!timeStr) return null;
-  const [h, min] = timeStr.split(":").map(Number);
+  const timeParts = timeStr.split(":");
+  const h = parseInt(timeParts[0], 10);
+  const min = parseInt(timeParts[1], 10);
+  if (isNaN(h) || isNaN(min)) return null;
   if (dateStr) {
-    const [day, month, year] = dateStr.split("/").map(Number);
-    const d = new Date(year, month - 1, day, h, min, 0, 0);
-    if (h * 60 + min <= 9 * 60) d.setDate(d.getDate() + 1);
-    return d;
+    let [day, month, year] = dateStr.split("/").map(Number);
+    // handle M/D/YYYY format (US Excel) — month > 12 means day/month are swapped
+    if (month > 12) { [day, month] = [month, day]; }
+    if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+      const d = new Date(year, month - 1, day, h, min, 0, 0);
+      if (h * 60 + min <= 9 * 60) d.setDate(d.getDate() + 1);
+      return d;
+    }
   }
   // ไม่มี date → fallback วันนี้ + ปรับข้ามคืน
   const d = new Date(); d.setHours(h, min, 0, 0);
