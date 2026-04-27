@@ -1732,6 +1732,24 @@ const DETAIL_SOURCES = [
   { id: "others",       label: "อื่นๆ",          emoji: "📦", color: "#f97316", bg: "#fff7ed" },
 ];
 
+// Map Thai lane names from Master file → lane IDs used in system
+const LANE_NAME_MAP = {
+  "ชิ้นส่วน":         "lane_parts",
+  "หัว/เครื่องใน":   "lane_head",
+  "หัวเครื่องใน":   "lane_head",
+  "หัว/เครื่องใน":  "lane_head",
+  "หมูซีก":          "lane_pork",
+  // fallback: if value already is a lane ID, pass through
+  "lane_parts":       "lane_parts",
+  "lane_head":        "lane_head",
+  "lane_pork":        "lane_pork",
+};
+const normalizeLaneKey = (raw) => {
+  const t = String(raw || "").trim();
+  return LANE_NAME_MAP[t] || null;
+};
+const normalizeProductCode = (val) => String(val || "").replace(/\.0+$/, "").trim();
+
 const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
   const [srcData, setSrcData] = useState({ wet_market: [], modern_trade: [], others: [] });
   const [masterPreview, setMasterPreview] = useState([]);
@@ -1769,10 +1787,10 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
         const wb = XLSX.read(ev.target.result, { type: "array", raw: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
-        const dataRows = rows.slice(1).filter(r => r[0] && String(r[0]).trim() !== "");
+        const dataRows = rows.slice(1).filter(r => r[0] && String(r[0]).trim() !== "" && String(r[0]).trim() !== "SAP");
         const parsed = dataRows.map(r => ({
-          productCode: String(r[0] || "").trim(),
-          laneKey:     String(r[3] || "").trim(), // e.g. lane_parts, lane_head, lane_pork
+          productCode: normalizeProductCode(r[0]),
+          laneKey:     normalizeLaneKey(r[3]),
         })).filter(r => r.productCode && r.laneKey);
         setMasterPreview(parsed);
         onMasterChange(parsed);
@@ -1787,7 +1805,8 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
   const plateLaneMap = {};
   const allDetail = [...(srcData.wet_market || []), ...(srcData.modern_trade || []), ...(srcData.others || [])];
   for (const row of allDetail) {
-    const match = (masterLane || []).find(m => m.productCode === row.productCode);
+    const rowCode = normalizeProductCode(row.productCode);
+    const match = (masterLane || []).find(m => normalizeProductCode(m.productCode) === rowCode);
     if (!match) continue;
     const plateKey = String(row.plate).replace(/\s/g, "").toUpperCase();
     if (!plateLaneMap[plateKey]) plateLaneMap[plateKey] = new Set();
@@ -1974,7 +1993,8 @@ export default function App() {
       const allDetail = Object.values(newSrc).flat();
       const map = {};
       for (const row of allDetail) {
-        const match = masterLane.find(m => m.productCode === row.productCode);
+        const rowCode = normalizeProductCode(row.productCode);
+        const match = masterLane.find(m => normalizeProductCode(m.productCode) === rowCode);
         if (!match) continue;
         const k = String(row.plate).replace(/\s/g, "").toUpperCase();
         if (!map[k]) map[k] = new Set();
