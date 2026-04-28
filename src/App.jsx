@@ -1498,7 +1498,8 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
     try {
       const photos = Array.isArray(form.photo) ? form.photo : (form.photo ? [form.photo] : []);
       const photoUrls = await uploadPhotos(`loading/${activeLane}`, sel.plate, photos);
-      const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { done: true, photos: photoUrls, note: form.note, doneAt: TIME_NOW() } };
+      const existing = sel.loadLanes?.[activeLane] || {};
+      const loadLanes = { ...(sel.loadLanes || {}), [activeLane]: { ...existing, done: true, photos: photoUrls, note: form.note, doneAt: TIME_NOW() } };
       onUpdate(sel.id, { loadLanes });
       setF(activeLane, { selId: "", photo: null, note: "", flash: true, uploading: false });
       setTimeout(() => setF(activeLane, { flash: false }), 2500);
@@ -1774,15 +1775,17 @@ const Download = ({ onReset }) => {
 // ADMIN
 // ─────────────────────────────────────────────────────────────────────────────
 const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
-  const [selId, setSelId] = useState("");
-  const [form,  setForm]  = useState(null);
-  const [msg,   setMsg]   = useState("");
+  const [selId,   setSelId]   = useState("");
+  const [form,    setForm]    = useState(null);
+  const [msg,     setMsg]     = useState("");
+  const [mergeId, setMergeId] = useState("");
 
   const truck  = trucks.find(t => t.id === selId);
 
   // unique values from queue entries matching this truck's plate
   const plateNum = s => (String(s).match(/\d+/g) || []).pop() || "";
-  const matchedQueue = truck ? queue.filter(q => plateNum(q.plate) === plateNum(truck.plate)) : [];
+  const matchedQueue   = truck ? queue.filter(q => plateNum(q.plate) === plateNum(truck.plate)) : [];
+  const duplicateTrucks = truck ? trucks.filter(t => t.id !== selId && plateNum(t.plate) === plateNum(truck.plate)) : [];
   const queueZones  = [...new Set(matchedQueue.map(q => q.zone).filter(Boolean))];
   const queueGroups = [...new Set(matchedQueue.map(q => q.customerGroup).filter(Boolean))];
 
@@ -1813,6 +1816,24 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
     setTimeout(() => setMsg(""), 2500);
   };
 
+  const handleMerge = async () => {
+    const src = trucks.find(t => t.id === mergeId);
+    if (!src || !truck) return;
+    if (!window.confirm(`Merge ข้อมูลจาก ${src.plate} (zone: ${src.zone || "–"}) เข้า ${truck.plate} (zone: ${truck.zone || "–"}) แล้วลบรถต้นทางออก?`)) return;
+    // merge lane-by-lane: T-1 (target) มีสิทธิ์ก่อน ถ้า T-1 ไม่มีค่อยเอาของ T-2
+    const mergedQC   = { ...(src.qcLanes   || {}) };
+    const mergedLoad = { ...(src.loadLanes  || {}) };
+    for (const l of LOADING_LANES) {
+      if (truck.qcLanes?.[l.id]?.done)   mergedQC[l.id]   = truck.qcLanes[l.id];
+      if (truck.loadLanes?.[l.id]?.done)  mergedLoad[l.id] = truck.loadLanes[l.id];
+    }
+    await onUpdate(selId, { qcLanes: mergedQC, loadLanes: mergedLoad });
+    await onDeleteTruck(mergeId);
+    setMergeId("");
+    setMsg("✅ Merge สำเร็จ — ลบรถซ้ำแล้ว");
+    setTimeout(() => setMsg(""), 3000);
+  };
+
   const setQC   = (lid, key, val) => setForm(f => ({ ...f, qcLanes:   { ...f.qcLanes,   [lid]: { ...(f.qcLanes[lid]   || {}), [key]: val } } }));
   const setLoad = (lid, key, val) => setForm(f => ({ ...f, loadLanes: { ...f.loadLanes, [lid]: { ...(f.loadLanes[lid] || {}), [key]: val } } }));
   const resetQC   = (lid) => setForm(f => ({ ...f, qcLanes:   { ...f.qcLanes,   [lid]: {} } }));
@@ -1836,6 +1857,29 @@ const Admin = ({ trucks, queue, onUpdate, onDeleteTruck }) => {
           ))}
         </select>
       </div>
+
+      {/* Merge — แสดงเฉพาะเมื่อมีรถ plate เดียวกันในระบบ */}
+      {truck && duplicateTrucks.length > 0 && (
+        <div style={{ ...card, border: "1.5px solid #fde047", background: "#fefce8" }}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>🔀 Merge รถซ้ำ</div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+            พบทะเบียน <b>{truck.plate}</b> ในระบบ {duplicateTrucks.length + 1} คัน — เลือกรถที่จะดูดข้อมูล (source) เข้ามารวมกับตัวนี้ แล้วรถ source จะถูกลบ
+          </div>
+          <select value={mergeId} onChange={e => setMergeId(e.target.value)} style={{ ...inp, marginBottom: 10 }}>
+            <option value="">— เลือกรถ source —</option>
+            {duplicateTrucks.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.plate} · zone: {t.zone || "–"} · {STATUS_META[t.status]?.label || t.status}
+                {t.qcLanes ? ` · QC: ${LOADING_LANES.filter(l => t.qcLanes[l.id]?.done).map(l => l.tinyLabel).join(", ") || "ยังไม่มี"}` : ""}
+              </option>
+            ))}
+          </select>
+          <button onClick={handleMerge} disabled={!mergeId}
+            style={{ width: "100%", background: mergeId ? "#854d0e" : "#e5e7eb", color: mergeId ? "#fff" : "#9ca3af", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: mergeId ? "pointer" : "default" }}>
+            🔀 Merge และลบรถ source
+          </button>
+        </div>
+      )}
 
       {truck && form && (
         <>
