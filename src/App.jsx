@@ -2104,12 +2104,62 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
   const [showDebug,   setShowDebug]   = useState(false);
   const [masterDebug, setMasterDebug] = useState(null); // { total, parsed, sampleCol3 }
 
-  // On mount: replay stored source data into parent
+  // On mount: fetch from Supabase (shared), fallback to localStorage
   useEffect(() => {
-    const stored = initSrc();
-    Object.entries(stored).forEach(([srcId, rows]) => {
-      if (rows?.length) onDetailChange(srcId, rows);
+    fetchDetailSrc().then(remote => {
+      if (remote) {
+        const merged = {};
+        const names = { ...initNames() };
+        for (const [srcId, { rows, fileName }] of Object.entries(remote)) {
+          merged[srcId] = rows;
+          if (fileName) names[srcId] = fileName;
+        }
+        setSrcData(prev => {
+          const next = { ...prev, ...merged };
+          localStorage.setItem("wh_detail_src", JSON.stringify(next));
+          return next;
+        });
+        setFileNames(prev => {
+          const next = { ...prev, ...names };
+          localStorage.setItem("wh_detail_names", JSON.stringify(next));
+          return next;
+        });
+        Object.entries(merged).forEach(([srcId, rows]) => {
+          if (rows?.length) onDetailChange(srcId, rows);
+        });
+      } else {
+        const stored = initSrc();
+        Object.entries(stored).forEach(([srcId, rows]) => {
+          if (rows?.length) onDetailChange(srcId, rows);
+        });
+      }
     });
+
+    const channel = supabase.channel("detail-src-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wh_master" }, (payload) => {
+        const row = payload.new;
+        if (!row?.id?.startsWith("detail_")) return;
+        const srcId = row.id.replace(/^detail_/, "");
+        const payload2 = row.data || {};
+        const rows = Array.isArray(payload2) ? payload2 : (payload2.rows || []);
+        const fileName = payload2.file_name || "";
+        setSrcData(prev => {
+          const next = { ...prev, [srcId]: rows };
+          localStorage.setItem("wh_detail_src", JSON.stringify(next));
+          return next;
+        });
+        if (fileName) {
+          setFileNames(prev => {
+            const next = { ...prev, [srcId]: fileName };
+            localStorage.setItem("wh_detail_names", JSON.stringify(next));
+            return next;
+          });
+        }
+        onDetailChange(srcId, rows);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Parse source file (col U=index20=productCode, col BN=index65=plate)
@@ -2144,6 +2194,8 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
           localStorage.setItem("wh_detail_names", JSON.stringify(next));
           return next;
         });
+        // Save to Supabase so other machines can see this data
+        supabase.from("wh_master").upsert({ id: `detail_${srcId}`, data: { rows: parsed, file_name: file.name } });
         onDetailChange(srcId, parsed);
       } catch(e) {
         alert("อ่านไฟล์ไม่สำเร็จ: " + e.message);
@@ -2342,7 +2394,22 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const fetchQueue  = async () => { const { data } = await supabase.from("wh_queue").select("*");  return (data || []).map(r => r.data).sort((a, b) => (a.seq ?? Infinity) - (b.seq ?? Infinity)); };
 const fetchTrucks = async () => { const { data } = await supabase.from("wh_trucks").select("*"); return (data || []).map(r => r.data); };
-const fetchMaster = async () => { const { data } = await supabase.from("wh_master").select("*"); return data && data[0] ? (data[0].data || []) : []; };
+const fetchMaster = async () => { const { data } = await supabase.from("wh_master").select("*").eq("id", "master"); return data && data[0] ? (data[0].data || []) : []; };
+const fetchDetailSrc = async () => {
+  const ids = DETAIL_SOURCES.map(s => `detail_${s.id}`);
+  const { data } = await supabase.from("wh_master").select("*").in("id", ids);
+  if (!data || data.length === 0) return null;
+  const result = {};
+  for (const row of data) {
+    const srcId = row.id.replace(/^detail_/, "");
+    const payload = row.data || {};
+    result[srcId] = {
+      rows:     Array.isArray(payload) ? payload : (payload.rows || []),
+      fileName: payload.file_name || "",
+    };
+  }
+  return result;
+};
 
 export default function App() {
   const [queue,      setQueue]      = useState([]);
