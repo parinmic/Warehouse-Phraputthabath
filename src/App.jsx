@@ -1711,17 +1711,31 @@ const Download = ({ onReset }) => {
   const [exportDate, setExportDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [archives, setArchives] = useState([]);
+  const [deleteDate, setDeleteDate] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
+  const loadArchives = () => {
     supabase.from("wh_archive").select("archive_date").order("archive_date", { ascending: false })
       .then(({ data }) => setArchives((data || []).map(r => r.archive_date)));
-  }, []);
+  };
+
+  useEffect(() => { loadArchives(); }, []);
 
   const handleDownload = async () => {
     if (!exportDate) return;
     setLoading(true);
     await exportArchiveExcel(exportDate);
     setLoading(false);
+  };
+
+  const handleDeleteArchive = async () => {
+    if (!deleteDate) return;
+    if (!window.confirm(`ลบข้อมูล Archive วันที่ ${deleteDate} ถาวร?`)) return;
+    setDeleting(true);
+    await supabase.from("wh_archive").delete().eq("archive_date", deleteDate);
+    setDeleteDate("");
+    loadArchives();
+    setDeleting(false);
   };
 
   return (
@@ -1766,6 +1780,37 @@ const Download = ({ onReset }) => {
             </div>
           </div>
         )}
+      </div>
+
+      <h3 style={{ margin: "24px 0 12px", fontWeight: 800, fontSize: 16 }}>🗑️ ลบข้อมูลย้อนหลัง</h3>
+      <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: 24, maxWidth: 480 }}>
+        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 14 }}>เลือกวันที่แล้วลบข้อมูล Archive — การลบจะไม่สามารถกู้คืนได้</div>
+        {archives.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", marginBottom: 8 }}>เลือกจาก Archive ที่มี</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {archives.map(d => (
+                <button key={d} onClick={() => setDeleteDate(d)}
+                  style={{ background: deleteDate === d ? "#991b1b" : "#f3f4f6", color: deleteDate === d ? "#fff" : "#374151", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <input
+          type="date"
+          value={deleteDate}
+          onChange={e => setDeleteDate(e.target.value)}
+          style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "10px 12px", fontSize: 14, boxSizing: "border-box", marginBottom: 12 }}
+        />
+        <button
+          onClick={handleDeleteArchive}
+          disabled={!deleteDate || deleting}
+          style={{ width: "100%", background: deleteDate ? "#fee2e2" : "#e5e7eb", color: deleteDate ? "#991b1b" : "#9ca3af", border: deleteDate ? "1.5px solid #fca5a5" : "none", borderRadius: 10, padding: "13px 0", fontSize: 15, fontWeight: 700, cursor: deleteDate ? "pointer" : "default" }}
+        >
+          {deleting ? "กำลังลบ..." : `🗑️ ลบ Archive${deleteDate ? ` วันที่ ${deleteDate}` : ""}`}
+        </button>
       </div>
     </div>
   );
@@ -2303,7 +2348,7 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
-const fetchQueue  = async () => { const { data } = await supabase.from("wh_queue").select("*");  return (data || []).map(r => r.data); };
+const fetchQueue  = async () => { const { data } = await supabase.from("wh_queue").select("*");  return (data || []).map(r => r.data).sort((a, b) => (a.seq ?? Infinity) - (b.seq ?? Infinity)); };
 const fetchTrucks = async () => { const { data } = await supabase.from("wh_trucks").select("*"); return (data || []).map(r => r.data); };
 const fetchMaster = async () => { const { data } = await supabase.from("wh_master").select("*"); return data && data[0] ? (data[0].data || []) : []; };
 
