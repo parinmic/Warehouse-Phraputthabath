@@ -1063,22 +1063,14 @@ const DriverScan = ({ queue, trucks, onScan, skipGeofence }) => {
           <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>{pendingEntry.plate}</div>
           {pendingEntry.customerGroup && <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>กลุ่มลูกค้า: {pendingEntry.customerGroup}</div>}
         </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>📍 Zone</label>
-          <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)}
-            style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", background: "#fff" }}>
-            <option value="">— ไม่ระบุ —</option>
-            {(() => {
-              const usedIds = new Set(trucks.map(t => t.queueId).filter(Boolean));
-              const zones = [];
-              queue
-                .filter(q => matchPlate(q.plate, pendingEntry.plate) && !usedIds.has(q.id))
-                .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-                .forEach(q => { if (q.zone && !zones.includes(q.zone)) zones.push(q.zone); });
-              return zones.map(z => <option key={z} value={z}>{z}</option>);
-            })()}
-          </select>
-        </div>
+        {selectedZone && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>📍 Zone</label>
+            <div style={{ width: "100%", border: "2px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, boxSizing: "border-box", background: "#f9fafb", color: "#7c3aed" }}>
+              {selectedZone}
+            </div>
+          </div>
+        )}
         <button onClick={handleConfirm}
           style={{ width: "100%", background: "#111", color: "#fff", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
           ✅ ยืนยันเช็คอิน
