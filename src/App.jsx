@@ -2538,9 +2538,10 @@ export default function App() {
 
   const handleReset = async () => {
     if (!window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) return;
-    const archiveDate = queue.length > 0
-      ? parseQueueDateToISO(queue[0].date)
-      : DATE_STR();
+    // archive date = วันรอบงานที่เพิ่งปิด: ก่อนเที่ยง = เมื่อวาน, หลังเที่ยง = วันนี้
+    const _now = new Date();
+    if (_now.getHours() < 12) _now.setDate(_now.getDate() - 1);
+    const archiveDate = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
     await supabase.from("wh_archive").upsert({ archive_date: archiveDate, queue, trucks });
     await supabase.from("wh_queue").delete().neq("id", "");
     await supabase.from("wh_trucks").delete().neq("id", "");
