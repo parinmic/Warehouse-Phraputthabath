@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { getCycleDate } from '../utils/cycleDate'
 
 export default function Driver() {
   const [truckPlate, setTruckPlate] = useState('')
@@ -13,11 +14,12 @@ export default function Driver() {
       setMessage('กรุณากรอกข้อมูลให้ครบ')
       return
     }
+    const cycleDate = await getCycleDate()
     const { error } = await supabase.from('trucks').insert({
       Truck_Plate: truckPlate,
       Truck_Type: truckType,
       Status: 'waiting',
-      Que_Date: new Date().toISOString().split('T')[0]
+      Que_Date: cycleDate
     })
     if (error) {
       setMessage('Error: ' + error.message)

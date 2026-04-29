@@ -39,7 +39,11 @@ const SHORT_DATE = `${new Date().getDate()}/${new Date().getMonth() + 1}/${new D
 const TIME_NOW = () => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 const getStep = (status) => STATUS_META[status]?.step ?? 0;
 
-const DATE_STR = () => new Date().toISOString().split("T")[0];
+const DATE_STR = () => {
+  const d = new Date();
+  if (d.getHours() < 9) d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const safePlate = p => String(p).replace(/[^a-zA-Z0-9]/g, "") || "unknown";
 
 const compressImage = file => new Promise(resolve => {
@@ -623,9 +627,9 @@ const matchCol = (header) => {
 };
 
 const parseQueueDateToISO = (dateStr) => {
-  if (!dateStr) return new Date().toISOString().split("T")[0];
+  if (!dateStr) return DATE_STR();
   const parts = dateStr.split("/");
-  if (parts.length !== 3) return new Date().toISOString().split("T")[0];
+  if (parts.length !== 3) return DATE_STR();
   const [d, m, y] = parts.map(Number);
   return `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 };
@@ -2536,7 +2540,7 @@ export default function App() {
     if (!window.confirm("ล้างข้อมูลทั้งหมดสำหรับวันใหม่?")) return;
     const archiveDate = queue.length > 0
       ? parseQueueDateToISO(queue[0].date)
-      : new Date().toISOString().split("T")[0];
+      : DATE_STR();
     await supabase.from("wh_archive").upsert({ archive_date: archiveDate, queue, trucks });
     await supabase.from("wh_queue").delete().neq("id", "");
     await supabase.from("wh_trucks").delete().neq("id", "");

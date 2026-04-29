@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { getCycleDate } from '../utils/cycleDate'
 
 export default function QC() {
   const [trucks, setTrucks] = useState([])
@@ -22,17 +23,20 @@ export default function QC() {
     const { data } = await supabase
       .from('trucks')
       .select('*')
-      .eq('Que_Date', new Date().toISOString().split('T')[0])
+      .eq('Que_Date', await getCycleDate())
     setTrucks(data || [])
   }
 
   async function fetchQcRecords() {
-    const today = new Date().toISOString().split('T')[0]
+    const cycleDate = await getCycleDate() // 'YYYY-MM-DD' ของรอบงาน
+    const start = new Date(cycleDate + 'T00:00:00')
+    const end = new Date(cycleDate + 'T00:00:00')
+    end.setDate(end.getDate() + 2) // ครอบคลุมข้ามคืนถึงเช้า
     const { data } = await supabase
       .from('qc_records')
       .select('*')
-      .gte('created_at', today + 'T00:00:00')
-      .lte('created_at', today + 'T23:59:59')
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString())
       .order('created_at', { ascending: false })
     setQcRecords(data || [])
   }
