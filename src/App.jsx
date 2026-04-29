@@ -439,6 +439,7 @@ const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head:
 
 const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+  const [searchPlate, setSearchPlate] = useState("");
   useEffect(() => {
     const id = setInterval(() => setClock(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
     return () => clearInterval(id);
@@ -493,6 +494,9 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
     if (ra !== rb) return ra - rb;
     return getRemMins(a) - getRemMins(b);
   });
+  const visibleRows = searchPlate.trim()
+    ? allRows.filter(r => r.plate?.toLowerCase().includes(searchPlate.trim().toLowerCase()))
+    : allRows;
 
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
   const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
@@ -523,11 +527,22 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
 
         {/* Right: truck table */}
         <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, fontSize: 14 }}>
-            🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+          <div style={{ padding: "10px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
+              🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+            </span>
+            <input
+              type="text"
+              placeholder="🔍 ค้นหาทะเบียน..."
+              value={searchPlate}
+              onChange={e => setSearchPlate(e.target.value)}
+              style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none" }}
+            />
           </div>
-          {allRows.length === 0
-            ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>ยังไม่มีรถเข้าโรงงาน</div>
+          {visibleRows.length === 0
+            ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>
+                {searchPlate.trim() ? `ไม่พบทะเบียน "${searchPlate}"` : "ยังไม่มีรถเข้าโรงงาน"}
+              </div>
             : <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 170px)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
@@ -538,7 +553,7 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {allRows.map(({ key, date, plate, customerGroup, entryTime, exitTime, truck }) => {
+                    {visibleRows.map(({ key, date, plate, customerGroup, entryTime, exitTime, truck }) => {
                       const rem = getRemMins({ date, exitTime });
                       const urgent = rem < 20 && truck?.status !== "invoiced";
                       return (
