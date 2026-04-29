@@ -2155,11 +2155,13 @@ const DetailLoading = ({ masterLane, onMasterChange, onDetailChange }) => {
     });
 
     const channel = supabase.channel("detail-src-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "wh_master" }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "wh_master" }, async (payload) => {
         const row = payload.new;
         if (!row?.id?.startsWith("detail_")) return;
         const srcId = row.id.replace(/^detail_/, "");
-        const payload2 = row.data || {};
+        // Re-fetch แทนการอ่านจาก payload เพราะ JSONB ขนาดใหญ่อาจถูกตัดใน realtime
+        const { data: fresh } = await supabase.from("wh_master").select("data").eq("id", row.id).single();
+        const payload2 = fresh?.data || row.data || {};
         const rows = Array.isArray(payload2) ? payload2 : (payload2.rows || []);
         const fileName = payload2.file_name || "";
         setSrcData(prev => {
