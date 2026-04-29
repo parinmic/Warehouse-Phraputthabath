@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 export default function Dashboard() {
   const [trucks, setTrucks] = useState([])
+  const [search, setSearch] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -23,6 +24,10 @@ export default function Dashboard() {
     setTrucks(data || [])
   }
 
+  const filtered = search.trim()
+    ? trucks.filter(t => t.Truck_Plate?.toLowerCase().includes(search.trim().toLowerCase()))
+    : trucks
+
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <h1 className="text-2xl font-bold text-center mb-6">🏭 Warehouse Phraputthabath</h1>
@@ -34,9 +39,20 @@ export default function Dashboard() {
         <button onClick={() => navigate('/loading-bay')} className="bg-orange-500 text-white p-4 rounded-xl text-center font-bold">🏗️ ลานโหลด</button>
         <button onClick={() => navigate('/planner')} className="bg-red-500 text-white p-4 rounded-xl text-center font-bold">📊 วางแผน</button>
       </div>
-      <h2 className="text-xl font-bold mb-4">รถในโรงงานวันนี้</h2>
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="🔍 ค้นหาทะเบียนรถ..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full border rounded-xl p-3 text-base shadow-sm bg-white"
+        />
+      </div>
+      <h2 className="text-xl font-bold mb-4">
+        รถในโรงงาน {search.trim() ? `(${filtered.length} คัน)` : ''}
+      </h2>
       <div className="space-y-3">
-        {trucks.map(truck => (
+        {filtered.map(truck => (
           <div key={truck.ID} className="bg-white rounded-xl p-4 shadow">
             <div className="font-bold text-lg">{truck.Truck_Plate}</div>
             <div className="text-gray-500 text-sm">{truck.Truck_Type}</div>
@@ -44,7 +60,11 @@ export default function Dashboard() {
             <div className="text-sm">ลาน: {truck.Loading_Bay || '-'}</div>
           </div>
         ))}
-        {trucks.length === 0 && <div className="text-center text-gray-400">ยังไม่มีรถเข้าโรงงานวันนี้</div>}
+        {filtered.length === 0 && (
+          <div className="text-center text-gray-400">
+            {search.trim() ? `ไม่พบทะเบียน "${search}"` : 'ยังไม่มีรถเข้าโรงงานวันนี้'}
+          </div>
+        )}
       </div>
     </div>
   )
