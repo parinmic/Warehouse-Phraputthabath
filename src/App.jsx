@@ -437,13 +437,123 @@ const exportArchiveExcel = async (dateStr) => {
 
 const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head: "ลานหัว/เครื่องใน", lane_pork: "ลานหมูซีก" };
 
+const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, fullscreen, onToggleFullscreen, getRemMins }) => {
+  const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
+  const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ padding: "10px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
+          🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
+        </span>
+        <input
+          type="text"
+          placeholder="🔍 ค้นหาทะเบียน..."
+          value={searchPlate}
+          onChange={e => setSearchPlate(e.target.value)}
+          style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none" }}
+        />
+        <button
+          onClick={onToggleFullscreen}
+          title={fullscreen ? "ย่อหน้าต่าง (Esc)" : "ขยายเต็มจอ"}
+          style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb", cursor: "pointer", padding: "4px 8px", fontSize: 15, lineHeight: 1, color: "#374151", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          {fullscreen ? "✕" : "⛶"}
+        </button>
+      </div>
+      {visibleRows.length === 0
+        ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>
+            {searchPlate.trim() ? `ไม่พบทะเบียน "${searchPlate}"` : "ยังไม่มีรถเข้าโรงงาน"}
+          </div>
+        : <div style={{ overflowX: "auto", overflowY: "auto", flex: fullscreen ? 1 : undefined, maxHeight: fullscreen ? undefined : "calc(100vh - 170px)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <tr style={{ background: "#f9fafb" }}>
+                  {[{l:"ทะเบียน",w:60},{l:"กลุ่มลูกค้า",w:100},{l:"เวลาเข้าโรงงาน",w:90},{l:"เวลาออกจากโรงงาน",w:200},{l:"สถานะ",w:"auto"},{l:"ใบเบิกสินค้า",w:60},{l:"ใบสรุปจ่าย",w:60},{l:"ใบ Invoice",w:60}].map(h => (
+                    <th key={h.l} style={{ width: h.w, padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h.l}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map(({ key, date, plate, customerGroup, entryTime, exitTime, truck }) => {
+                  const rem = getRemMins({ date, exitTime });
+                  const urgent = rem < 20 && truck?.status !== "invoiced";
+                  return (
+                    <tr key={key} className={urgent ? "row-urgent" : ""} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
+                      <td style={{ padding: "10px 12px", color: "#374151", maxWidth: 100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customerGroup}</td>
+                      <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                        <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
+                        {truck?.arrivedAt
+                          ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
+                          : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}><TimeBar exitTime={exitTime} date={date} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} /></td>
+                      <td style={{ padding: "10px 12px" }}>
+                        {!truck
+                          ? <span style={{ fontSize: 11, color: "#9ca3af" }}>รอเช็คอิน</span>
+                          : (() => {
+                              const anyQC = LOADING_LANES.some(l => truck.qcLanes?.[l.id]?.done);
+                              if (!anyQC) return <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>รอเข้าโหลด</span>;
+                              return (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                  {LOADING_LANES.map(l => {
+                                    const loaded = truck.loadLanes?.[l.id]?.done;
+                                    const qcDone = truck.qcLanes?.[l.id]?.done;
+                                    const waiting = truck.loadLanes?.[l.id]?.waiting && !loaded;
+                                    if (loaded) return (
+                                      <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#10b981", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
+                                        {l.tinyLabel}
+                                        <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
+                                      </div>
+                                    );
+                                    if (waiting) return (
+                                      <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                        รอสินค้า {l.tinyLabel}
+                                        <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
+                                      </div>
+                                    );
+                                    if (qcDone) return <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>;
+                                    return null;
+                                  })}
+                                </div>
+                              );
+                            })()
+                        }
+                        {truck?.extraStatus && (
+                          <div style={{ marginTop: 4 }}>
+                            <span style={{ display: "inline-block", background: "#fee2e2", color: "#991b1b", borderRadius: 12, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>⚠️ {truck.extraStatus}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
+                      <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
+                      <td style={{ padding: "10px 12px" }}>{truck?.status === "invoiced" ? <Tick/> : <Dash/>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+      }
+    </div>
+  );
+};
+
 const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   const [searchPlate, setSearchPlate] = useState("");
+  const [truckFullscreen, setTruckFullscreen] = useState(false);
   useEffect(() => {
     const id = setInterval(() => setClock(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
     return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    if (!truckFullscreen) return;
+    const onKey = e => { if (e.key === "Escape") setTruckFullscreen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [truckFullscreen]);
   const cnt = (s) => trucks.filter(t => t.status === s).length;
   const stats = [
     { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.queueId === q.id)).length, color: "#3b82f6", icon: "list"    },
@@ -499,9 +609,6 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
     ? allRows.filter(r => r.plate?.toLowerCase().includes(searchPlate.trim().toLowerCase()))
     : allRows;
 
-  const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
-  const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
-
   return (
     <div>
       {/* Sticky header */}
@@ -528,95 +635,32 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
 
         {/* Right: truck table */}
         <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "10px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
-              🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
-            </span>
-            <input
-              type="text"
-              placeholder="🔍 ค้นหาทะเบียน..."
-              value={searchPlate}
-              onChange={e => setSearchPlate(e.target.value)}
-              style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none" }}
-            />
-          </div>
-          {visibleRows.length === 0
-            ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>
-                {searchPlate.trim() ? `ไม่พบทะเบียน "${searchPlate}"` : "ยังไม่มีรถเข้าโรงงาน"}
-              </div>
-            : <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 170px)" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
-                    <tr style={{ background: "#f9fafb" }}>
-                      {[{l:"ทะเบียน",w:60},{l:"กลุ่มลูกค้า",w:100},{l:"เวลาเข้าโรงงาน",w:90},{l:"เวลาออกจากโรงงาน",w:200},{l:"สถานะ",w:"auto"},{l:"ใบเบิกสินค้า",w:60},{l:"ใบสรุปจ่าย",w:60},{l:"ใบ Invoice",w:60}].map(h => (
-                        <th key={h.l} style={{ width: h.w, padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h.l}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleRows.map(({ key, date, plate, customerGroup, entryTime, exitTime, truck }) => {
-                      const rem = getRemMins({ date, exitTime });
-                      const urgent = rem < 20 && truck?.status !== "invoiced";
-                      return (
-                      <tr key={key} className={urgent ? "row-urgent" : ""} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "10px 12px", fontWeight: 800 }}>{plate}</td>
-                        <td style={{ padding: "10px 12px", color: "#374151", maxWidth: 100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customerGroup}</td>
-                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
-                          <div style={{ fontWeight: 700, color: "#3b82f6" }}>{entryTime || "—"}</div>
-                          {truck?.arrivedAt
-                            ? <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>เข้าจริง {truck.arrivedAt}</div>
-                            : <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>(รถยังไม่เข้าโรงงาน)</div>}
-                        </td>
-                        <td style={{ padding: "10px 12px" }}><TimeBar exitTime={exitTime} date={date} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} /></td>
-                        <td style={{ padding: "10px 12px" }}>
-                          {!truck
-                            ? <span style={{ fontSize: 11, color: "#9ca3af" }}>รอเช็คอิน</span>
-                            : (() => {
-                                const anyQC = LOADING_LANES.some(l => truck.qcLanes?.[l.id]?.done);
-                                if (!anyQC) return <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>รอเข้าโหลด</span>;
-                                return (
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                    {LOADING_LANES.map(l => {
-                                      const loaded = truck.loadLanes?.[l.id]?.done;
-                                      const qcDone = truck.qcLanes?.[l.id]?.done;
-                                      const waiting = truck.loadLanes?.[l.id]?.waiting && !loaded;
-                                      if (loaded) return (
-                                        <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#10b981", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4 }}>
-                                          {l.tinyLabel}
-                                          <span style={{ position: "absolute", bottom: -4, right: -4, background: "#059669", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>✓</span>
-                                        </div>
-                                      );
-                                      if (waiting) return (
-                                          <div key={l.id} style={{ position: "relative", display: "inline-block", background: "#fbbf24", color: "#fff", borderRadius: 12, padding: "3px 10px 5px 8px", fontSize: 11, fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                            รอสินค้า {l.tinyLabel}
-                                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#d97706", border: "2px solid #fff", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>⏳</span>
-                                          </div>
-                                        );
-                                      if (qcDone) return <span key={l.id} style={{ fontSize: 11, color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>กำลังโหลด {l.tinyLabel}</span>;
-                                      return null;
-                                    })}
-                                  </div>
-                                );
-                              })()
-                          }
-                          {truck?.extraStatus && (
-                            <div style={{ marginTop: 4 }}>
-                              <span style={{ display: "inline-block", background: "#fee2e2", color: "#991b1b", borderRadius: 12, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>⚠️ {truck.extraStatus}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
-                        <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
-                        <td style={{ padding: "10px 12px" }}>
-                          {truck?.status === "invoiced" ? <Tick/> : <Dash/>}
-                        </td>
-                      </tr>
-                    );})}
-                  </tbody>
-                </table>
-              </div>
-          }
+          <TruckTable
+            visibleRows={visibleRows}
+            allRows={allRows}
+            searchPlate={searchPlate}
+            setSearchPlate={setSearchPlate}
+            fullscreen={false}
+            onToggleFullscreen={() => setTruckFullscreen(true)}
+            getRemMins={getRemMins}
+          />
         </div>
+        {truckFullscreen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "stretch", justifyContent: "stretch" }}
+               onClick={e => { if (e.target === e.currentTarget) setTruckFullscreen(false); }}>
+            <div style={{ background: "#fff", borderRadius: 16, margin: 24, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
+              <TruckTable
+                visibleRows={visibleRows}
+                allRows={allRows}
+                searchPlate={searchPlate}
+                setSearchPlate={setSearchPlate}
+                fullscreen={true}
+                onToggleFullscreen={() => setTruckFullscreen(false)}
+                getRemMins={getRemMins}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1163,7 +1207,7 @@ const Picking = ({ trucks, queue, onUpdate, detailMap = {} }) => {
       return 2;                                  // รอขั้นตอนอื่น
     };
     return rank(a.truck) - rank(b.truck);
-  });
+  }).filter(row => row.customerGroup !== "CPFTH");
 
   const [searchQuery, setSearchQuery] = useState("");
   const filteredRows = allRows.filter(r => r.plate.includes(searchQuery));
@@ -1350,7 +1394,7 @@ const QC = ({ trucks, onUpdate }) => {
   const [uploading, setUploading] = useState(false);
 
   // รับทุกรถที่สถานะ "picking" (พิมพ์เบิกแล้ว)
-  const eligible = trucks.filter(t => ["arrived", "picking"].includes(t.status));
+  const eligible = trucks.filter(t => ["arrived", "picking"].includes(t.status) && t.customerGroup !== "CPFTH");
   const sel      = trucks.find(t => t.id === selId) || null;
   const actLane  = LOADING_LANES.find(l => l.id === lane);
   const thisLaneQCd = sel?.qcLanes?.[lane]?.done;
@@ -1478,6 +1522,7 @@ const LoadingYard = ({ trucks, onUpdate, laneId }) => {
   // รถที่ QC ลานนี้ผ่านแล้ว และยังไม่ได้โหลดลานนี้
   const eligibleForLane = (laneId) => trucks.filter(t =>
     ["arrived", "picking"].includes(t.status) &&
+    t.customerGroup !== "CPFTH" &&
     t.qcLanes?.[laneId]?.done &&
     !t.loadLanes?.[laneId]?.done
   );
@@ -1619,7 +1664,7 @@ const Planning = ({ trucks, queue, onUpdate }) => {
       return 2;
     };
     return rank(a.truck) - rank(b.truck);
-  });
+  }).filter(row => row.customerGroup !== "CPFTH");
 
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
   const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
