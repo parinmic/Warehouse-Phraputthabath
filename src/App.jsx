@@ -437,11 +437,22 @@ const exportArchiveExcel = async (dateStr) => {
 
 const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head: "ลานหัว/เครื่องใน", lane_pork: "ลานหมูซีก" };
 
-const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, fullscreen, onToggleFullscreen, getRemMins }) => {
+const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemMins }) => {
+  const containerRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) containerRef.current?.requestFullscreen();
+    else document.exitFullscreen();
+  };
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✓</span>;
   const Dash = () => <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>;
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div ref={containerRef} style={{ display: "flex", flexDirection: "column", height: "100%", background: "#fff" }}>
       <div style={{ padding: "10px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
           🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, marginLeft: 4 }}>{allRows.length}</span>
@@ -454,18 +465,18 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, fullscr
           style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none" }}
         />
         <button
-          onClick={onToggleFullscreen}
-          title={fullscreen ? "ย่อหน้าต่าง (Esc)" : "ขยายเต็มจอ"}
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "ย่อหน้าต่าง (Esc)" : "ขยายเต็มจอ"}
           style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb", cursor: "pointer", padding: "4px 8px", fontSize: 15, lineHeight: 1, color: "#374151", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          {fullscreen ? "✕" : "⛶"}
+          {isFullscreen ? "✕" : "⛶"}
         </button>
       </div>
       {visibleRows.length === 0
         ? <div style={{ padding: 36, textAlign: "center", color: "#9ca3af" }}>
             {searchPlate.trim() ? `ไม่พบทะเบียน "${searchPlate}"` : "ยังไม่มีรถเข้าโรงงาน"}
           </div>
-        : <div style={{ overflowX: "auto", overflowY: "auto", flex: fullscreen ? 1 : undefined, maxHeight: fullscreen ? undefined : "calc(100vh - 170px)" }}>
+        : <div style={{ overflowX: "auto", overflowY: "auto", flex: 1, maxHeight: isFullscreen ? undefined : "calc(100vh - 170px)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
@@ -543,17 +554,10 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, fullscr
 const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   const [searchPlate, setSearchPlate] = useState("");
-  const [truckFullscreen, setTruckFullscreen] = useState(false);
   useEffect(() => {
     const id = setInterval(() => setClock(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
     return () => clearInterval(id);
   }, []);
-  useEffect(() => {
-    if (!truckFullscreen) return;
-    const onKey = e => { if (e.key === "Escape") setTruckFullscreen(false); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [truckFullscreen]);
   const cnt = (s) => trucks.filter(t => t.status === s).length;
   const stats = [
     { label: "คิวรอเข้า",         value: queue.filter(q => !trucks.find(t => t.queueId === q.id)).length, color: "#3b82f6", icon: "list"    },
@@ -640,27 +644,9 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
             allRows={allRows}
             searchPlate={searchPlate}
             setSearchPlate={setSearchPlate}
-            fullscreen={false}
-            onToggleFullscreen={() => setTruckFullscreen(true)}
             getRemMins={getRemMins}
           />
         </div>
-        {truckFullscreen && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "stretch", justifyContent: "stretch" }}
-               onClick={e => { if (e.target === e.currentTarget) setTruckFullscreen(false); }}>
-            <div style={{ background: "#fff", borderRadius: 16, margin: 24, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
-              <TruckTable
-                visibleRows={visibleRows}
-                allRows={allRows}
-                searchPlate={searchPlate}
-                setSearchPlate={setSearchPlate}
-                fullscreen={true}
-                onToggleFullscreen={() => setTruckFullscreen(false)}
-                getRemMins={getRemMins}
-              />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
