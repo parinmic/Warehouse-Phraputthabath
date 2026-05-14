@@ -480,7 +480,7 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
-                  {[{l:"ทะเบียน",w:60},{l:"กลุ่มลูกค้า",w:100},{l:"เวลาเข้าโรงงาน",w:90},{l:"เวลาออกจากโรงงาน",w:200},{l:"สถานะ",w:"auto"}].map(h => (
+                  {[{l:"ทะเบียน",w:60},{l:"กลุ่มลูกค้า",w:100},{l:"เวลาเข้าโรงงาน",w:90},{l:"เวลาออกจากโรงงาน",w:200},{l:"สถานะ",w:"auto"},{l:"ใบเบิกสินค้า",w:60},{l:"ใบสรุปจ่าย",w:60},{l:"ใบ Invoice",w:60}].map(h => (
                     <th key={h.l} style={{ width: h.w, padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", whiteSpace: "nowrap", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>{h.l}</th>
                   ))}
                 </tr>
@@ -537,6 +537,9 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
                           </div>
                         )}
                       </td>
+                      <td style={{ padding: "10px 12px" }}>{truck?.pickupPrinted ? <Tick/> : <Dash/>}</td>
+                      <td style={{ padding: "10px 12px" }}>{truck?.summaryPrinted ? <Tick/> : <Dash/>}</td>
+                      <td style={{ padding: "10px 12px" }}>{truck?.status === "invoiced" ? <Tick/> : <Dash/>}</td>
                     </tr>
                   );
                 })}
