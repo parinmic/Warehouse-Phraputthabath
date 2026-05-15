@@ -459,13 +459,13 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
         <span style={{ fontWeight: 700, fontSize: fs ? 36 : 14, whiteSpace: "nowrap" }}>
           🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: fs ? "6px 18px" : "2px 8px", fontSize: fs ? 28 : 11, marginLeft: 4 }}>{allRows.length}</span>
         </span>
-        <input
+        {!fs && <input
           type="text"
           placeholder="🔍 ค้นหาทะเบียน..."
           value={searchPlate}
           onChange={e => setSearchPlate(e.target.value)}
-          style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: fs ? "14px 22px" : "5px 10px", fontSize: fs ? 26 : 12, width: fs ? 400 : 180, outline: "none" }}
-        />
+          style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none" }}
+        />}
         <button
           onClick={toggleFullscreen}
           title={fs ? "ย่อหน้าต่าง (Esc)" : "ขยายเต็มจอ"}
