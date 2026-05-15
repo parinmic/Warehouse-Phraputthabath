@@ -1,4 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
+const useIsMobile = () => {
+  const [v, setV] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setV(window.innerWidth < 768);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return v;
+};
 import * as XLSX from "xlsx";
 import { supabase } from "./lib/supabase";
 import { sendTeamsNotification } from "./utils/teams";
@@ -441,6 +451,7 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
   const containerRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isTvMode, setIsTvMode] = useState(false);
+  const isMobile = useIsMobile();
   useEffect(() => {
     const onChange = () => {
       const inFs = !!document.fullscreenElement;
@@ -497,6 +508,55 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
       {visibleRows.length === 0
         ? <div style={{ padding: fs ? 80 : 36, textAlign: "center", color: "#9ca3af", fontSize: fs ? 28 : 14 }}>
             {searchPlate.trim() ? `ไม่พบทะเบียน "${searchPlate}"` : "ยังไม่มีรถเข้าโรงงาน"}
+          </div>
+        : isMobile && !fs
+        ? <div style={{ padding: "8px 12px 16px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", maxHeight: "calc(100vh - 130px)" }}>
+            {visibleRows.map(({ key, date, plate, customerGroup, entryTime, exitTime, truck }) => {
+              const rem = getRemMins({ date, exitTime });
+              const urgent = rem < 20 && truck?.status !== "invoiced";
+              const anyQC = LOADING_LANES.some(l => truck?.qcLanes?.[l.id]?.done);
+              return (
+                <div key={key} style={{ background: urgent ? "#fff5f5" : "#fff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", border: urgent ? "1.5px solid #fca5a5" : "1px solid #f3f4f6" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 20, color: "#111", letterSpacing: 0.5 }}>{plate}</div>
+                      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>{customerGroup}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, color: "#3b82f6", fontSize: 16 }}>{entryTime || "—"}</div>
+                      {truck?.arrivedAt && <div style={{ fontSize: 11, color: "#9ca3af" }}>เข้าจริง {truck.arrivedAt}</div>}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <TimeBar exitTime={exitTime} date={date} done={truck?.status === "invoiced"} invoicedAt={truck?.invoicedAt} fs={false} />
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                    {!truck
+                      ? <span style={{ fontSize: 12, color: "#9ca3af", background: "#f9fafb", borderRadius: 8, padding: "4px 10px" }}>รอเช็คอิน</span>
+                      : !anyQC
+                      ? <span style={{ fontSize: 12, color: "#6b7280", background: "#f3f4f6", borderRadius: 8, padding: "4px 10px", fontWeight: 600 }}>รอเข้าโหลด</span>
+                      : LOADING_LANES.map(l => {
+                          const loaded = truck.loadLanes?.[l.id]?.done;
+                          const qcDone = truck.qcLanes?.[l.id]?.done;
+                          const waiting = truck.loadLanes?.[l.id]?.waiting && !loaded;
+                          if (loaded) return <span key={l.id} style={{ background: "#10b981", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>✓ {l.tinyLabel}</span>;
+                          if (waiting) return <span key={l.id} style={{ background: "#fbbf24", color: "#fff", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>⏳ รอสินค้า {l.tinyLabel}</span>;
+                          if (qcDone) return <span key={l.id} style={{ background: "#fff7ed", color: "#f97316", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, border: "1px solid #fed7aa" }}>โหลด {l.tinyLabel}</span>;
+                          return null;
+                        })
+                    }
+                    {truck?.extraStatus && <span style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>⚠️ {truck.extraStatus}</span>}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
+                    {[{label:"ใบเบิก", done: truck?.pickupPrinted},{label:"ใบสรุป", done: truck?.summaryPrinted},{label:"Invoice", done: truck?.status === "invoiced"}].map(item => (
+                      <span key={item.label} style={{ flex: 1, textAlign: "center", fontSize: 11, color: item.done ? "#10b981" : "#d1d5db", fontWeight: 700 }}>
+                        {item.done ? "✓" : "—"} {item.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         : <div style={{ overflowX: "auto", overflowY: "auto", flex: 1, maxHeight: fs ? undefined : "calc(100vh - 170px)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: fs ? 26 : 12 }}>
@@ -579,6 +639,7 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
 const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   const [searchPlate, setSearchPlate] = useState("");
+  const isMobile = useIsMobile();
   useEffect(() => {
     const id = setInterval(() => setClock(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })), 1000);
     return () => clearInterval(id);
@@ -641,38 +702,46 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
   return (
     <div>
       {/* Sticky header */}
-      <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: 8, paddingTop: 0 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
-            <span style={{ fontSize: 22, fontWeight: 900, color: "#374151" }}>{TODAY} <span style={{ color: "#3b82f6", fontVariantNumeric: "tabular-nums" }}>{clock}</span></span>
+      <div style={{ position: "sticky", top: 56, zIndex: 40, background: "#f1f5f9", paddingBottom: isMobile ? 6 : 8, paddingTop: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+          <h2 style={{ margin: 0, fontSize: isMobile ? 16 : 22, fontWeight: 900 }}>📊 {lane ? LANE_LABEL[lane] : "Main Dashboard"}</h2>
+          <span style={{ fontSize: isMobile ? 14 : 22, fontWeight: 700, color: "#3b82f6", fontVariantNumeric: "tabular-nums" }}>{clock}</span>
+        </div>
+        {/* Mobile: stat cards แนวนอน scroll */}
+        {isMobile && (
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "8px 0 4px", scrollbarWidth: "none" }}>
+            {stats.map(s => (
+              <div key={s.label} style={{ flexShrink: 0, background: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", borderLeft: `4px solid ${s.color}`, minWidth: 90 }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3, whiteSpace: "nowrap" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {isMobile ? (
+        /* Mobile: full width truck cards */
+        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden", marginTop: 8 }}>
+          <TruckTable visibleRows={visibleRows} allRows={allRows} searchPlate={searchPlate} setSearchPlate={setSearchPlate} getRemMins={getRemMins} />
+        </div>
+      ) : (
+        /* Desktop: sidebar + table */
+        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "start" }}>
+          <div style={{ position: "sticky", top: 100, alignSelf: "start", display: "flex", flexDirection: "column", gap: 10 }}>
+            {stats.map(s => (
+              <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderLeft: `4px solid ${s.color}` }}>
+                <div style={{ color: s.color, marginBottom: 3 }}><Icon name={s.icon} size={16} /></div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: "#111", lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: 10, color: "#6b7280", marginTop: 3 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden", minWidth: 0 }}>
+            <TruckTable visibleRows={visibleRows} allRows={allRows} searchPlate={searchPlate} setSearchPlate={setSearchPlate} getRemMins={getRemMins} />
           </div>
         </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "start" }}>
-        {/* Left: sticky stat cards */}
-        <div style={{ position: "sticky", top: 100, alignSelf: "start", display: "flex", flexDirection: "column", gap: 10 }}>
-          {stats.map(s => (
-            <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderLeft: `4px solid ${s.color}` }}>
-              <div style={{ color: s.color, marginBottom: 3 }}><Icon name={s.icon} size={16} /></div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#111", lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontSize: 10, color: "#6b7280", marginTop: 3 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Right: truck table */}
-        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden", minWidth: 0 }}>
-          <TruckTable
-            visibleRows={visibleRows}
-            allRows={allRows}
-            searchPlate={searchPlate}
-            setSearchPlate={setSearchPlate}
-            getRemMins={getRemMins}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -2490,6 +2559,7 @@ const fetchDetailSrc = async () => {
 };
 
 export default function App() {
+  const isMobile = useIsMobile();
   const [queue,      setQueue]      = useState([]);
   const [trucks,     setTrucks]     = useState([]);
   const [masterLane, setMasterLane] = useState(() => {
@@ -2682,42 +2752,42 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}>
-      <div style={{ background: "#111", color: "#fff", padding: "0 14px", position: "sticky", top: 0, zIndex: 100, height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 22 }}>🏭</span>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>Factory Loading System</div>
-            <div style={{ fontSize: 10, color: "#9ca3af" }}>{TODAY}</div>
+      <div style={{ background: "#111", color: "#fff", padding: "0 14px", position: "sticky", top: 0, zIndex: 100, height: 56, display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>🏭</span>
+        {!isMobile && (
+          <div style={{ flexShrink: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.2 }}>Factory</div>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>Loading System</div>
           </div>
-          <select value={tab} onChange={e => { setTab(e.target.value); setDashLane("main"); }}
-            style={{ marginLeft: 10, background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>
-            {tabs.map(t => {
-              const n = badge[t.id] || 0;
-              return <option key={t.id} value={t.id}>{t.label}{n > 0 ? ` · ${n}` : ""}</option>;
+        )}
+        <select value={tab} onChange={e => { setTab(e.target.value); setDashLane("main"); }}
+          style={{ flex: isMobile ? 1 : "none", background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 8, padding: isMobile ? "8px 10px" : "6px 12px", fontSize: isMobile ? 14 : 13, fontWeight: 700, cursor: "pointer", outline: "none", marginLeft: isMobile ? 0 : 6 }}>
+          {tabs.map(t => {
+            const n = badge[t.id] || 0;
+            return <option key={t.id} value={t.id}>{t.label}{n > 0 ? ` · ${n}` : ""}</option>;
+          })}
+        </select>
+        {tab === "dashboard" && (
+          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+            {[
+              { id: "main",       label: "Main",   icon: "chart"    },
+              { id: "lane_parts", label: "ชิ้นส่วน", icon: "pig_cuts" },
+              { id: "lane_head",  label: "หัว/ใน",  icon: "pig_head" },
+              { id: "lane_pork",  label: "หมูซีก", icon: "pig_side" },
+            ].map(l => {
+              const active = dashLane === l.id;
+              return (
+                <button key={l.id} onClick={() => setDashLane(l.id)}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, background: active ? "#f9fafb" : "transparent", color: active ? "#111" : "#9ca3af", border: "none", borderRadius: 8, padding: isMobile ? "4px 6px" : "5px 8px", fontSize: isMobile ? 9 : 10, fontWeight: 700, cursor: "pointer", minWidth: isMobile ? 36 : 44, lineHeight: 1.3 }}>
+                  <Icon name={l.icon} size={isMobile ? 14 : 18} />
+                  {l.label}
+                </button>
+              );
             })}
-          </select>
-          {tab === "dashboard" && (
-            <div style={{ display: "flex", gap: 2, marginLeft: 10 }}>
-              {[
-                { id: "main",       label: "Main",        icon: "chart"    },
-                { id: "lane_parts", label: "ชิ้นส่วน",    icon: "pig_cuts" },
-                { id: "lane_head",  label: "หัว/เครื่องใน", icon: "pig_head" },
-                { id: "lane_pork",  label: "หมูซีก",      icon: "pig_side" },
-              ].map(l => {
-                const active = dashLane === l.id;
-                return (
-                  <button key={l.id} onClick={() => setDashLane(l.id)}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: active ? "#f9fafb" : "transparent", color: active ? "#111" : "#9ca3af", border: "none", borderRadius: 10, padding: "5px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer", minWidth: 44, lineHeight: 1.3 }}>
-                    <Icon name={l.icon} size={18} />
-                    {l.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-      <div style={{ maxWidth: tab === "dashboard" ? "none" : tab === "picking" ? 1400 : 960, margin: "0 auto", padding: tab === "dashboard" ? "8px 14px 14px" : "20px 14px 100px" }}>
+      <div style={{ maxWidth: tab === "dashboard" ? "none" : tab === "picking" ? 1400 : 960, margin: "0 auto", padding: tab === "dashboard" ? (isMobile ? "8px 10px 80px" : "8px 14px 14px") : (isMobile ? "16px 12px 80px" : "20px 14px 100px") }}>
         {tab === "dashboard" && <Dashboard trucks={trucks} queue={queue} onReset={handleReset} lane={dashLane === "main" ? null : dashLane} detailMap={detailMap} />}
         {tab === "qr"        && (
           <div style={{ textAlign: "center", maxWidth: 400, margin: "0 auto", background: "#fff", padding: 30, borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
