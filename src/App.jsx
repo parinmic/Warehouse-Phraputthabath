@@ -663,7 +663,7 @@ const Dashboard = ({ trucks, queue, onReset, lane, detailMap }) => {
         </div>
 
         {/* Right: truck table */}
-        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+        <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden", minWidth: 0 }}>
           <TruckTable
             visibleRows={visibleRows}
             allRows={allRows}
