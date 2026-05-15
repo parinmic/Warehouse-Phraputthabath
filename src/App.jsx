@@ -440,8 +440,13 @@ const LANE_LABEL = { lane_parts: "ลานชิ้นส่วน", lane_head:
 const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemMins }) => {
   const containerRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTvMode, setIsTvMode] = useState(false);
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const onChange = () => {
+      const inFs = !!document.fullscreenElement;
+      setIsFullscreen(inFs);
+      if (!inFs) setIsTvMode(false);
+    };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
@@ -449,7 +454,15 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
     if (!document.fullscreenElement) containerRef.current?.requestFullscreen();
     else document.exitFullscreen();
   };
-  const fs = isFullscreen;
+  const toggleTvMode = () => {
+    if (!isTvMode) {
+      containerRef.current?.requestFullscreen();
+      setIsTvMode(true);
+    } else {
+      document.exitFullscreen();
+    }
+  };
+  const fs = isTvMode;
   const Tick = () => <span style={{ color: "#10b981", fontWeight: 700, fontSize: fs ? 28 : 13 }}>✓</span>;
   const Dash = () => <span style={{ color: "#d1d5db", fontSize: fs ? 26 : 12 }}>—</span>;
   const tdP = fs ? "22px 32px" : "10px 12px";
@@ -459,19 +472,26 @@ const TruckTable = ({ visibleRows, allRows, searchPlate, setSearchPlate, getRemM
         <span style={{ fontWeight: 700, fontSize: fs ? 36 : 14, whiteSpace: "nowrap" }}>
           🚛 รถในโรงงานวันนี้ <span style={{ background: "#111", color: "#fff", borderRadius: 10, padding: fs ? "6px 18px" : "2px 8px", fontSize: fs ? 28 : 11, marginLeft: 4 }}>{allRows.length}</span>
         </span>
-        {!fs && <input
+        <input
           type="text"
           placeholder="🔍 ค้นหาทะเบียน..."
           value={searchPlate}
           onChange={e => setSearchPlate(e.target.value)}
-          style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none" }}
-        />}
+          style={{ marginLeft: "auto", border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 12, width: 180, outline: "none", display: fs ? "none" : undefined }}
+        />
         <button
           onClick={toggleFullscreen}
-          title={fs ? "ย่อหน้าต่าง (Esc)" : "ขยายเต็มจอ"}
-          style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb", cursor: "pointer", padding: fs ? "10px 18px" : "4px 8px", fontSize: fs ? 30 : 15, lineHeight: 1, color: "#374151", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+          title={isFullscreen && !isTvMode ? "ย่อหน้าต่าง (Esc)" : "ขยายเต็มจอ (Desktop)"}
+          style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb", cursor: "pointer", padding: "4px 8px", fontSize: 15, lineHeight: 1, color: "#374151", flexShrink: 0, display: fs ? "none" : "flex", alignItems: "center", justifyContent: "center" }}
         >
-          {fs ? "✕" : "⛶"}
+          {isFullscreen && !isTvMode ? "✕" : "⛶"}
+        </button>
+        <button
+          onClick={toggleTvMode}
+          title={fs ? "ออกจากโหมด TV" : "โหมด Smart TV"}
+          style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: fs ? "#111" : "#f9fafb", cursor: "pointer", padding: fs ? "10px 18px" : "4px 8px", fontSize: fs ? 30 : 15, lineHeight: 1, color: fs ? "#fff" : "#374151", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          {fs ? "✕" : "📺"}
         </button>
       </div>
       {visibleRows.length === 0
